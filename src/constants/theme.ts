@@ -1,10 +1,14 @@
+// Digikhata Design Token System — Theme
 export const theme = {
   radius: {
+    xs: 6,
     sm: 8,
     button: 12,
     input: 12,
     logo: 14,
     card: 16,
+    fab: 18,
+    full: 999,
   },
   spacing: {
     xs: 4,
@@ -15,7 +19,44 @@ export const theme = {
     xxl: 40,
   },
   sizes: {
-    inputHeight: 54,
-    buttonHeight: 54,
+    inputHeight: 50,
+    buttonHeight: 50,
+    fabSize: 56,
+    tabBarHeight: 64,
+    headerHeight: 60,
+  },
+  shadows: {
+    card: {
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 12,
+      elevation: 3,
+    },
+    fab: {
+      shadowColor: '#2563EB',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
+      elevation: 6,
+    },
+    button: {
+      shadowColor: '#2563EB',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.20,
+      shadowRadius: 10,
+      elevation: 3,
+    },
+  },
+  typography: {
+    h1: { fontSize: 26, fontWeight: '700' as const, letterSpacing: -0.5 },
+    h2: { fontSize: 20, fontWeight: '700' as const, letterSpacing: -0.3 },
+    h3: { fontSize: 17, fontWeight: '600' as const },
+    h4: { fontSize: 15, fontWeight: '600' as const },
+    body: { fontSize: 15, fontWeight: '400' as const },
+    bodySmall: { fontSize: 13, fontWeight: '400' as const },
+    caption: { fontSize: 12, fontWeight: '400' as const },
+    label: { fontSize: 13, fontWeight: '600' as const },
+    number: { fontSize: 22, fontWeight: '700' as const, letterSpacing: -0.5 },
   },
 };

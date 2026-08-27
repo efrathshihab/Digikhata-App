@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { ReportsScreen } from '@/features/reports/screens/ReportsScreen';
 
-export default function IndexRoute() {
-  return <View><Text>reports/index.tsx</Text></View>;
+export default function ReportsRoute() {
+  return <ReportsScreen />;
 }

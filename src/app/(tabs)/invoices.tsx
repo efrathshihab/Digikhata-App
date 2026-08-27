@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { InvoicesScreen } from '@/features/invoices/screens/InvoicesScreen';
 
 export default function InvoicesRoute() {
-  return <View><Text>Invoices</Text></View>;
+  return <InvoicesScreen />;
 }

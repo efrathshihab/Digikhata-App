@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { SettingsScreen } from '@/features/settings/screens/SettingsScreen';
 
-export default function IndexRoute() {
-  return <View><Text>settings/index.tsx</Text></View>;
+export default function SettingsRoute() {
+  return <SettingsScreen />;
 }
