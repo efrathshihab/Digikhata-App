@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { DriversScreen } from '@/features/transport/screens/DriversScreen';
 
-export default function driversRoute() {
-  return <View><Text>transport/drivers.tsx</Text></View>;
+export default function Route() {
+  return <DriversScreen />;
 }

@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { DuesScreen } from '@/features/dues/screens/DuesScreen';
 
-export default function IndexRoute() {
-  return <View><Text>dues/index.tsx</Text></View>;
+export default function DuesRoute() {
+  return <DuesScreen />;
 }

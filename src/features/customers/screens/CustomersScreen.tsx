@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -16,6 +17,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { CustomerCard, Customer } from '@/components/ui/CustomerCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
+import { FilterBar } from '@/components/ui/FilterChip';
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
 const ALL_CUSTOMERS: Customer[] = [
@@ -32,10 +34,17 @@ const ALL_CUSTOMERS: Customer[] = [
 type FilterKey = 'সব' | 'বকেয়া' | 'পরিশোধিত' | 'নিষ্ক্রিয়';
 const FILTERS: FilterKey[] = ['সব', 'বকেয়া', 'পরিশোধিত', 'নিষ্ক্রিয়'];
 
+
 export const CustomersScreen = () => {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('সব');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 900);
+  };
 
   const filtered = useMemo(() => {
     return ALL_CUSTOMERS.filter((c) => {
@@ -100,22 +109,16 @@ export const CustomersScreen = () => {
       </View>
 
       {/* ── Filter chips ─────────────────────────────────────────────── */}
-      <View style={styles.filtersRow}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f}
-            onPress={() => setActiveFilter(f)}
-            activeOpacity={0.7}
-            style={[styles.filterChip, activeFilter === f && styles.filterChipActive]}
-          >
-            <Text
-              style={[styles.filterLabel, activeFilter === f && styles.filterLabelActive]}
-            >
-              {f}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <FilterBar
+        options={FILTERS}
+        active={activeFilter}
+        onSelect={setActiveFilter}
+        variant="primary"
+        counts={{
+          'বকেয়া': ALL_CUSTOMERS.filter((c) => c.status === 'overdue').length,
+          'নিষ্ক্রিয়': ALL_CUSTOMERS.filter((c) => c.status === 'inactive').length,
+        }}
+      />
 
       {/* ── List ────────────────────────────────────────────────────── */}
       <FlatList
@@ -123,6 +126,14 @@ export const CustomersScreen = () => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
         renderItem={({ item }) => (
           <CustomerCard
             customer={item}

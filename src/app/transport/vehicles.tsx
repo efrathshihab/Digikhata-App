@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { VehiclesScreen } from '@/features/transport/screens/VehiclesScreen';
 
-export default function vehiclesRoute() {
-  return <View><Text>transport/vehicles.tsx</Text></View>;
+export default function Route() {
+  return <VehiclesScreen />;
 }

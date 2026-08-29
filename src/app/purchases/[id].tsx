@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { InvoiceDetailScreen } from '@/features/invoices/screens/InvoiceDetailScreen';
 
-export default function DetailsRoute() {
-  return <View><Text>purchases/[id].tsx</Text></View>;
+export default function Route() {
+  return <InvoiceDetailScreen />;
 }

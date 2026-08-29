@@ -11,7 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 
-type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
+type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost';
 
 interface AppButtonProps {
   title: string;
@@ -65,12 +65,14 @@ export const AppButton = ({
 
   const variantStyles: Record<Exclude<ButtonVariant, 'primary'>, object> = {
     secondary: styles.secondary,
+    outline: styles.outline,
     danger: styles.dangerBtn,
     ghost: styles.ghost,
   };
 
   const variantTextStyles: Record<Exclude<ButtonVariant, 'primary'>, object> = {
     secondary: styles.secondaryText,
+    outline: styles.outlineText,
     danger: styles.dangerText,
     ghost: styles.ghostText,
   };
@@ -156,6 +158,14 @@ const styles = StyleSheet.create({
   },
   dangerText: {
     color: colors.danger,
+  },
+  outline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  outlineText: {
+    color: colors.primary,
   },
   ghost: {
     backgroundColor: 'transparent',

@@ -194,6 +194,27 @@ export default function MoreRoute() {
           />
         </MenuGroup>
 
+        {/* Admin & Tools */}
+        <MenuGroup title="অন্যান্য সেবা">
+          <MenuItem
+            icon="message-square"
+            label="SMS ইতিহাস"
+            description="প্রেরিত এসএমএস ও ডেলিভারি স্ট্যাটাস"
+            iconBg={colors.primarySoft}
+            iconColor={colors.primary}
+            onPress={() => router.push('/sms')}
+            divider
+          />
+          <MenuItem
+            icon="users"
+            label="ব্যবহারকারী"
+            description="অ্যাপ ব্যবহারকারী পরিচালনা"
+            iconBg={colors.infoSoft}
+            iconColor={colors.info}
+            onPress={() => router.push('/users')}
+          />
+        </MenuGroup>
+
         {/* Settings */}
         <MenuGroup title="সেটিংস">
           <MenuItem

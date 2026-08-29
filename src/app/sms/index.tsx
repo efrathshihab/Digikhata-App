@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { SmsHistoryScreen } from '@/features/sms/screens/SmsHistoryScreen';
 
-export default function IndexRoute() {
-  return <View><Text>sms/index.tsx</Text></View>;
+export default function Route() {
+  return <SmsHistoryScreen />;
 }

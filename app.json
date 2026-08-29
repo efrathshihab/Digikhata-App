@@ -1,12 +1,16 @@
 {
   "expo": {
-    "name": "digikhata-mobile",
+    "name": "DigiKhata",
     "slug": "digikhata-mobile",
     "scheme": "digikhata",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#F6F8FC",
+    "splash": {
+      "backgroundColor": "#F6F8FC"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -17,7 +21,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "newArchEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"

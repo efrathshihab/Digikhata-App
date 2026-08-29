@@ -5,13 +5,16 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 
+// ─── Tab icon component ────────────────────────────────────────────────────────
 interface TabIconProps {
   name: string;
   label: string;
   focused: boolean;
+  /** Optional badge count */
+  badge?: number;
 }
 
-const TabIcon = ({ name, label, focused }: TabIconProps) => (
+const TabIcon = ({ name, label, focused, badge }: TabIconProps) => (
   <View style={styles.tabItem}>
     <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
       <Feather
@@ -19,13 +22,17 @@ const TabIcon = ({ name, label, focused }: TabIconProps) => (
         size={20}
         color={focused ? colors.primary : colors.textSecondary}
       />
+      {badge !== undefined && badge > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+        </View>
+      )}
     </View>
-    <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-      {label}
-    </Text>
+    <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
   </View>
 );
 
+// ─── Layout ────────────────────────────────────────────────────────────────────
 export default function TabsLayout() {
   return (
     <Tabs
@@ -33,8 +40,11 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarShowLabel: false,
         tabBarStyle: styles.tabBar,
+        // Ensure tab bar is above Android nav bar
+        tabBarHideOnKeyboard: true,
       }}
     >
+      {/* Dashboard */}
       <Tabs.Screen
         name="index"
         options={{
@@ -43,6 +53,8 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* Customers */}
       <Tabs.Screen
         name="customers"
         options={{
@@ -51,6 +63,8 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* Invoices */}
       <Tabs.Screen
         name="invoices"
         options={{
@@ -59,11 +73,13 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* More */}
       <Tabs.Screen
         name="more"
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon name="menu" label="আরও" focused={focused} />
+            <TabIcon name="menu" label="আরও" focused={focused} badge={5} />
           ),
         }}
       />
@@ -76,21 +92,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    height: Platform.OS === 'ios' ? 80 : 64,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 6,
+    height: Platform.OS === 'ios' ? 82 : 66,
+    paddingBottom: Platform.OS === 'ios' ? 22 : 8,
     paddingTop: 6,
-    elevation: 8,
+    // Subtle top shadow
     shadowColor: colors.navy,
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.06,
     shadowRadius: 10,
+    elevation: 10,
   },
   tabItem: {
     alignItems: 'center',
     gap: 3,
+    paddingTop: 2,
   },
   iconWrap: {
-    width: 36,
+    width: 40,
     height: 36,
     borderRadius: 10,
     alignItems: 'center',
@@ -107,5 +125,24 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: colors.primary,
     fontWeight: '700',
+  },
+  badge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 7.5,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: colors.surface,
+  },
+  badgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: colors.surface,
   },
 });

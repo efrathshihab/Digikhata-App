@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { CreatePurchaseScreen } from '@/features/purchases/screens/CreatePurchaseScreen';
 
-export default function newRoute() {
-  return <View><Text>purchases/new.tsx</Text></View>;
+export default function Route() {
+  return <CreatePurchaseScreen />;
 }

@@ -10,7 +10,7 @@ export const colors = {
   // Neutral
   navy: '#0F172A',
   textPrimary: '#1E293B',
-  textSecondary: '#64748B',
+  textSecondary: '#475569',
   textMuted: '#94A3B8',
   border: '#E2E8F0',
   background: '#F6F8FC',

@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { ReceivePaymentScreen } from '@/features/payments/screens/ReceivePaymentScreen';
 
-export default function DetailsRoute() {
-  return <View><Text>payments/[id].tsx</Text></View>;
+export default function PaymentDetailRoute() {
+  return <ReceivePaymentScreen />;
 }

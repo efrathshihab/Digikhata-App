@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { NewDeliveryScreen } from '@/features/transport/screens/NewDeliveryScreen';
 
-export default function newRoute() {
-  return <View><Text>transport/deliveries/new.tsx</Text></View>;
+export default function Route() {
+  return <NewDeliveryScreen />;
 }

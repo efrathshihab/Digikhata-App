@@ -1,6 +1,5 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import { PurchasesScreen } from '@/features/purchases/screens/PurchasesScreen';
 
-export default function IndexRoute() {
-  return <View><Text>purchases/index.tsx</Text></View>;
+export default function Route() {
+  return <PurchasesScreen />;
 }
