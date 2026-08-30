@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Linking,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -16,30 +17,11 @@ import { theme } from '@/constants/theme';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { AppButton } from '@/components/ui/AppButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-const MOCK_CUSTOMER = {
-  id: '1',
-  serialNo: '০০১',
-  name: 'রহিম উদ্দিন',
-  phone: '01711-223344',
-  village: 'মিরপুর, ঢাকা',
-  address: 'বাড়ি ৩২, রোড ৭, মিরপুর-১২, ঢাকা-১২১৬',
-  totalTransactions: '৳ ৮৫,০০০',
-  totalPaid: '৳ ৬৯,৫০০',
-  totalDue: 15500,
-  status: 'overdue' as const,
-};
-
-const MOCK_TRANSACTIONS = [
-  { id: 't1', date: '২৭ আগ ২০২৬', desc: 'বিক্রয় — ফ্লাই অ্যাশ সিমেন্ট', ref: 'INV-০০১৫', debit: 25000, payment: 0, balance: 15500 },
-  { id: 't2', date: '২০ আগ ২০২৬', desc: 'পেমেন্ট গ্রহণ — নগদ', ref: 'PMT-০০৩২', debit: 0, payment: 15000, balance: 5500 },
-  { id: 't3', date: '১৫ আগ ২০২৬', desc: 'বিক্রয় — রড ও সিমেন্ট', ref: 'INV-০০১১', debit: 20500, payment: 0, balance: 20500 },
-  { id: 't4', date: '১০ আগ ২০২৬', desc: 'পেমেন্ট গ্রহণ — bKash', ref: 'PMT-০০২৮', debit: 0, payment: 20000, balance: 0 },
-];
+import { useQuery } from '@tanstack/react-query';
+import { customersApi } from '@/api/customers.api';
 
 // ── Transaction row ───────────────────────────────────────────────────────────
-const TransactionRow = ({ tx }: { tx: typeof MOCK_TRANSACTIONS[0] }) => (
+const TransactionRow = ({ tx }: { tx: any }) => (
   <View style={tStyles.row}>
     <View style={tStyles.dateCol}>
       <Text style={tStyles.date}>{tx.date}</Text>
@@ -70,7 +52,32 @@ const TransactionRow = ({ tx }: { tx: typeof MOCK_TRANSACTIONS[0] }) => (
 export const CustomerDetailsScreen = () => {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const customer = MOCK_CUSTOMER; // In real app, look up by id
+
+  const { data: customer, isLoading } = useQuery({
+    queryKey: ['customer', id],
+    queryFn: () => customersApi.getCustomer(id),
+  });
+
+  const { data: ledger, isLoading: isLedgerLoading } = useQuery({
+    queryKey: ['customerLedger', id],
+    queryFn: () => customersApi.getCustomerLedger(id),
+  });
+
+  const handleEditPress = () => {
+    Alert.alert('সম্পাদনা', 'গ্রাহকের তথ্য সম্পাদনা ফিচারটি শীঘ্রই আসছে।');
+  };
+
+  if (isLoading || !customer) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text>লোড হচ্ছে...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const isOverdue = Number(customer.currentBalance) < 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -86,7 +93,11 @@ export const CustomerDetailsScreen = () => {
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>গ্রাহকের বিবরণ</Text>
-        <TouchableOpacity style={styles.editBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.editBtn}
+          activeOpacity={0.7}
+          onPress={handleEditPress}
+        >
           <Feather name="edit-2" size={17} color={colors.primary} />
         </TouchableOpacity>
       </View>
@@ -105,10 +116,10 @@ export const CustomerDetailsScreen = () => {
             <View style={styles.profileInfo}>
               <View style={styles.nameRow}>
                 <Text style={styles.name}>{customer.name}</Text>
-                <StatusBadge label="বকেয়া" variant="danger" />
+                {isOverdue && <StatusBadge label="বকেয়া" variant="danger" />}
               </View>
-              <Text style={styles.meta}>#{customer.serialNo}</Text>
-              <Text style={styles.meta}>{customer.address}</Text>
+              <Text style={styles.meta}>#CUS-{customer.id.substring(0, 4)}</Text>
+              <Text style={styles.meta}>{customer.address || customer.phone}</Text>
             </View>
           </View>
 
@@ -122,11 +133,19 @@ export const CustomerDetailsScreen = () => {
               <Feather name="phone-call" size={16} color={colors.success} />
               <Text style={[styles.actionBtnLabel, { color: colors.success }]}>কল করুন</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+              onPress={handleEditPress}
+            >
               <Feather name="edit-2" size={16} color={colors.primary} />
               <Text style={[styles.actionBtnLabel, { color: colors.primary }]}>সম্পাদনা</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+              onPress={() => router.push('/sms')}
+            >
               <Feather name="message-circle" size={16} color={colors.info} />
               <Text style={[styles.actionBtnLabel, { color: colors.info }]}>SMS</Text>
             </TouchableOpacity>
@@ -136,17 +155,19 @@ export const CustomerDetailsScreen = () => {
         {/* ── Summary cards ─────────────────────────────────────────── */}
         <View style={styles.summaryGrid}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>মোট লেনদেন</Text>
-            <Text style={styles.summaryValue}>{customer.totalTransactions}</Text>
+            <Text style={styles.summaryLabel}>ক্রেডিট লিমিট</Text>
+            <Text style={styles.summaryValue}>৳ {Number(customer.creditLimit).toLocaleString('en-IN')}</Text>
           </View>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>মোট পরিশোধ</Text>
-            <Text style={[styles.summaryValue, { color: colors.success }]}>{customer.totalPaid}</Text>
+            <Text style={styles.summaryLabel}>স্ট্যাটাস</Text>
+            <Text style={[styles.summaryValue, { color: customer.status === 'ACTIVE' ? colors.success : colors.danger }]}>
+              {customer.status === 'ACTIVE' ? 'সক্রিয়' : 'নিষ্ক্রিয়'}
+            </Text>
           </View>
           <View style={[styles.summaryCard, styles.summaryCardFull]}>
-            <Text style={styles.summaryLabel}>বর্তমান বকেয়া</Text>
-            <Text style={[styles.summaryValue, { color: colors.danger, fontSize: 22 }]}>
-              ৳ {customer.totalDue.toLocaleString()}
+            <Text style={styles.summaryLabel}>বর্তমান ব্যালেন্স</Text>
+            <Text style={[styles.summaryValue, { color: isOverdue ? colors.danger : colors.textPrimary, fontSize: 22 }]}>
+              {isOverdue ? 'বকেয়া' : 'জমা'}: ৳ {Math.abs(Number(customer.currentBalance)).toLocaleString('en-IN')}
             </Text>
           </View>
         </View>
@@ -165,12 +186,22 @@ export const CustomerDetailsScreen = () => {
           </View>
 
           {/* Table Body */}
-          {MOCK_TRANSACTIONS.map((tx, i) => (
+          {ledger?.items?.map((tx, i) => (
             <React.Fragment key={tx.id}>
-              <TransactionRow tx={tx} />
-              {i < MOCK_TRANSACTIONS.length - 1 && <View style={tStyles.divider} />}
+              <TransactionRow tx={{
+                date: new Date(tx.date).toLocaleDateString('bn-BD'),
+                ref: tx.referenceId || '',
+                desc: tx.description,
+                debit: Number(tx.debit),
+                payment: Number(tx.credit),
+                balance: Number(tx.balance),
+              }} />
+              {i < ledger.items.length - 1 && <View style={tStyles.divider} />}
             </React.Fragment>
           ))}
+          {!ledger?.items?.length && (
+            <Text style={{ padding: 16, textAlign: 'center', color: colors.textSecondary }}>কোনো লেনদেন পাওয়া যায়নি</Text>
+          )}
         </View>
 
         <View style={styles.bottomSpacer} />
@@ -183,14 +214,24 @@ export const CustomerDetailsScreen = () => {
           variant="secondary"
           fullWidth={false}
           style={{ flex: 1 }}
-          onPress={() => {}}
+          onPress={() =>
+            router.push({
+              pathname: '/invoices/create',
+              params: { customerId: customer.id, name: customer.name, phone: customer.phone },
+            })
+          }
           icon={<Feather name="plus" size={15} color={colors.primary} />}
         />
         <AppButton
           title="পেমেন্ট নিন"
           fullWidth={false}
           style={{ flex: 1 }}
-          onPress={() => {}}
+          onPress={() =>
+            router.push({
+              pathname: '/payments/receive',
+              params: { customerId: customer.id },
+            })
+          }
           icon={<Feather name="credit-card" size={15} color={colors.surface} />}
         />
       </View>

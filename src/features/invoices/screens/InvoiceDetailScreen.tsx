@@ -15,72 +15,11 @@ import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { AppButton } from '@/components/ui/AppButton';
+import { useQuery } from '@tanstack/react-query';
+import { purchasesApi } from '@/api/purchases.api';
 
 // ── Mock invoice data ─────────────────────────────────────────────────────────
-const MOCK_INVOICES: Record<string, any> = {
-  '1': {
-    id: '1',
-    invoiceNo: 'INV-০০১৫',
-    customerName: 'রহিম উদ্দিন',
-    customerPhone: '01711-223344',
-    customerId: '1',
-    date: '২৭ আগস্ট ২০২৬',
-    dueDate: '৩ সেপ্টেম্বর ২০২৬',
-    status: 'partial' as const,
-    items: [
-      { id: 'i1', name: 'ফ্লাই অ্যাশ সিমেন্ট (৫০ ব্যাগ)', qty: 50, price: 480, total: 24000 },
-      { id: 'i2', name: 'পরিবহন', qty: 1, price: 1000, total: 1000 },
-    ],
-    subtotal: 25000,
-    discount: 0,
-    transport: 0,
-    grandTotal: 25000,
-    paid: 9500,
-    due: 15500,
-    note: 'সিমেন্ট ডেলিভারি সম্পন্ন।',
-  },
-  '2': {
-    id: '2',
-    invoiceNo: 'INV-০০১৪',
-    customerName: 'করিম মিয়া',
-    customerPhone: '01812-334455',
-    customerId: '2',
-    date: '২৬ আগস্ট ২০২৬',
-    dueDate: '২ সেপ্টেম্বর ২০২৬',
-    status: 'unpaid' as const,
-    items: [
-      { id: 'i1', name: 'রড — ১২mm (১ টন)', qty: 1, price: 8200, total: 8200 },
-    ],
-    subtotal: 8200,
-    discount: 0,
-    transport: 0,
-    grandTotal: 8200,
-    paid: 0,
-    due: 8200,
-    note: '',
-  },
-  '3': {
-    id: '3',
-    invoiceNo: 'INV-০০১৩',
-    customerName: 'মোঃ সালাউদ্দিন',
-    customerPhone: '01912-445566',
-    customerId: '3',
-    date: '২৫ আগস্ট ২০২৬',
-    dueDate: '১ সেপ্টেম্বর ২০২৬',
-    status: 'paid' as const,
-    items: [
-      { id: 'i1', name: 'সিমেন্ট ব্লক (৫০০ পিস)', qty: 500, price: 22, total: 11000 },
-      { id: 'i2', name: 'পরিবহন', qty: 1, price: 1000, total: 1000 },
-    ],
-    subtotal: 12000,
-    discount: 0,
-    transport: 0,
-    grandTotal: 12000,
-    paid: 12000,
-    due: 0,
-    note: 'সম্পূর্ণ পরিশোধ হয়েছে।',
-  },
-};
+// Replaced by real API data
 
 const STATUS_LABEL: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' }> = {
   paid: { label: 'পরিশোধিত', variant: 'success' },
@@ -115,12 +54,39 @@ const ItemRow = ({ item, index }: { item: any; index: number }) => (
 export const InvoiceDetailScreen = () => {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const invoice = MOCK_INVOICES[id] ?? MOCK_INVOICES['1'];
-  const statusInfo = STATUS_LABEL[invoice.status] ?? STATUS_LABEL['unpaid'];
+
+  const { data: purchase, isLoading } = useQuery({
+    queryKey: ['purchase', id],
+    queryFn: () => purchasesApi.getPurchase(id),
+  });
+
+  const getStatusInfo = (status: string, dueAmount: number, totalAmount: number) => {
+    if (dueAmount <= 0) return { label: 'পরিশোধিত', variant: 'success' as const };
+    if (dueAmount < totalAmount) return { label: 'আংশিক', variant: 'warning' as const };
+    return { label: 'বকেয়া', variant: 'danger' as const };
+  };
 
   const handleShare = () => {
     Alert.alert('শেয়ার', 'ইনভয়েস PDF শেয়ার করার সুবিধা শীঘ্রই আসছে।');
   };
+
+  if (isLoading || !purchase) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text>লোড হচ্ছে...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const invoice = purchase.invoice || {
+    id: purchase.id,
+    invoiceNumber: `INV-${purchase.id.substring(0, 4)}`,
+    totalAmount: purchase.netAmount || '0',
+    dueAmount: '0',
+  };
+  const statusInfo = getStatusInfo(purchase.status, Number(invoice.dueAmount), Number(invoice.totalAmount));
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -132,7 +98,7 @@ export const InvoiceDetailScreen = () => {
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>{invoice.invoiceNo}</Text>
+          <Text style={styles.headerTitle}>{invoice.invoiceNumber}</Text>
           <StatusBadge label={statusInfo.label} variant={statusInfo.variant} />
         </View>
         <TouchableOpacity onPress={handleShare} style={styles.shareBtn} activeOpacity={0.7}>
@@ -148,33 +114,32 @@ export const InvoiceDetailScreen = () => {
         {/* Customer card */}
         <View style={styles.customerCard}>
           <View style={styles.customerAvatar}>
-            <Text style={styles.customerAvatarText}>{invoice.customerName.charAt(0)}</Text>
+            <Text style={styles.customerAvatarText}>{purchase.customer?.name?.charAt(0) || '?'}</Text>
           </View>
           <View style={styles.customerInfo}>
-            <Text style={styles.customerName}>{invoice.customerName}</Text>
-            <Text style={styles.customerPhone}>{invoice.customerPhone}</Text>
+            <Text style={styles.customerName}>{purchase.customer?.name}</Text>
+            <Text style={styles.customerPhone}>{purchase.customer?.phone}</Text>
           </View>
           <TouchableOpacity
             style={styles.viewProfileBtn}
             activeOpacity={0.7}
-            onPress={() => router.push(`/customers/${invoice.customerId}`)}
+            onPress={() => router.push(`/customers/${purchase.customerId}`)}
           >
             <Text style={styles.viewProfileText}>প্রোফাইল</Text>
             <Feather name="chevron-right" size={14} color={colors.primary} />
           </TouchableOpacity>
         </View>
-
         {/* Invoice meta */}
         <View style={styles.metaCard}>
           <View style={styles.metaRow}>
             <View style={styles.metaItem}>
               <Text style={styles.metaLabel}>ইনভয়েস তারিখ</Text>
-              <Text style={styles.metaValue}>{invoice.date}</Text>
+              <Text style={styles.metaValue}>{new Date(purchase.purchaseDate).toLocaleDateString('bn-BD')}</Text>
             </View>
             <View style={styles.metaItem}>
-              <Text style={styles.metaLabel}>পরিশোধের তারিখ</Text>
-              <Text style={[styles.metaValue, invoice.due > 0 && { color: colors.danger }]}>
-                {invoice.dueDate}
+              <Text style={styles.metaLabel}>স্ট্যাটাস</Text>
+              <Text style={[styles.metaValue, { color: statusInfo.variant === 'danger' ? colors.danger : colors.textPrimary }]}>
+                {statusInfo.label}
               </Text>
             </View>
           </View>
@@ -193,10 +158,15 @@ export const InvoiceDetailScreen = () => {
             <View style={iStyles.numCol}><Text style={iStyles.headerText}>মোট</Text></View>
           </View>
 
-          {invoice.items.map((item: any, idx: number) => (
-            <React.Fragment key={item.id}>
-              <ItemRow item={item} index={idx} />
-              {idx < invoice.items.length - 1 && <View style={iStyles.divider} />}
+          {purchase.items?.map((item: any, idx: number) => (
+            <React.Fragment key={item.id || idx}>
+              <ItemRow item={{
+                name: item.name || item.product?.name || 'অজানা পণ্য',
+                qty: item.quantity,
+                price: Number(item.unitPrice),
+                total: Number(item.totalPrice)
+              }} index={idx} />
+              {idx < (purchase.items?.length || 0) - 1 && <View style={iStyles.divider} />}
             </React.Fragment>
           ))}
         </View>
@@ -205,45 +175,31 @@ export const InvoiceDetailScreen = () => {
         <View style={styles.totalsCard}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>সাবটোটাল</Text>
-            <Text style={styles.totalValue}>৳ {invoice.subtotal.toLocaleString()}</Text>
+            <Text style={styles.totalValue}>৳ {Number(purchase.netAmount || invoice.totalAmount).toLocaleString()}</Text>
           </View>
-          {invoice.discount > 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>ছাড়</Text>
-              <Text style={[styles.totalValue, { color: colors.success }]}>
-                - ৳ {invoice.discount.toLocaleString()}
-              </Text>
-            </View>
-          )}
-          {invoice.transport > 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>পরিবহন</Text>
-              <Text style={styles.totalValue}>+ ৳ {invoice.transport.toLocaleString()}</Text>
-            </View>
-          )}
           <View style={[styles.totalRow, styles.grandTotalRow]}>
             <Text style={styles.grandLabel}>মোট</Text>
-            <Text style={styles.grandValue}>৳ {invoice.grandTotal.toLocaleString()}</Text>
+            <Text style={styles.grandValue}>৳ {Number(invoice.totalAmount).toLocaleString()}</Text>
           </View>
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { color: colors.success }]}>পরিশোধিত</Text>
             <Text style={[styles.totalValue, { color: colors.success }]}>
-              - ৳ {invoice.paid.toLocaleString()}
+              - ৳ {(Number(invoice.totalAmount) - Number(invoice.dueAmount)).toLocaleString()}
             </Text>
           </View>
-          {invoice.due > 0 && (
+          {Number(invoice.dueAmount) > 0 && (
             <View style={[styles.totalRow, styles.dueRow]}>
               <Text style={styles.dueLabel}>বকেয়া</Text>
-              <Text style={styles.dueValue}>৳ {invoice.due.toLocaleString()}</Text>
+              <Text style={styles.dueValue}>৳ {Number(invoice.dueAmount).toLocaleString()}</Text>
             </View>
           )}
         </View>
 
         {/* Note */}
-        {!!invoice.note && (
+        {!!purchase.notes && (
           <View style={styles.noteCard}>
             <Text style={styles.noteTitle}>নোট</Text>
-            <Text style={styles.noteText}>{invoice.note}</Text>
+            <Text style={styles.noteText}>{purchase.notes}</Text>
           </View>
         )}
 
@@ -251,7 +207,7 @@ export const InvoiceDetailScreen = () => {
       </ScrollView>
 
       {/* Bottom actions */}
-      {invoice.due > 0 && (
+      {Number(invoice.dueAmount) > 0 && (
         <View style={styles.bottomBar}>
           <AppButton
             title="পেমেন্ট নিন"
@@ -260,7 +216,7 @@ export const InvoiceDetailScreen = () => {
             onPress={() =>
               router.push({
                 pathname: '/payments/receive',
-                params: { customerId: invoice.customerId, invoiceId: invoice.id },
+                params: { customerId: purchase.customerId, invoiceId: invoice.id },
               })
             }
             icon={<Feather name="credit-card" size={15} color={colors.surface} />}

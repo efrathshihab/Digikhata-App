@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StatusBar,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,19 +19,9 @@ import { CustomerCard, Customer } from '@/components/ui/CustomerCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { FilterBar } from '@/components/ui/FilterChip';
-
+import { useQuery } from '@tanstack/react-query';
+import { customersApi, Customer as ApiCustomer } from '@/api/customers.api';
 // ── Mock data ─────────────────────────────────────────────────────────────────
-const ALL_CUSTOMERS: Customer[] = [
-  { id: '1', serialNo: '০০১', name: 'রহিম উদ্দিন', phone: '01711-223344', village: 'মিরপুর, ঢাকা', totalDue: 15500, lastTransactionDate: '২৭ আগ ২০২৬', status: 'overdue' },
-  { id: '2', serialNo: '০০২', name: 'করিম মিয়া', phone: '01812-334455', village: 'মতিঝিল, ঢাকা', totalDue: 8200, lastTransactionDate: '২৬ আগ ২০২৬', status: 'overdue' },
-  { id: '3', serialNo: '০০৩', name: 'মোঃ সালাউদ্দিন', phone: '01912-445566', village: 'নারায়ণগঞ্জ', totalDue: 0, lastTransactionDate: '২৫ আগ ২০২৬', status: 'active' },
-  { id: '4', serialNo: '০০৪', name: 'সুমাইয়া বেগম', phone: '01611-556677', village: 'গাজীপুর', totalDue: 22000, lastTransactionDate: '২৪ আগ ২০২৬', status: 'overdue' },
-  { id: '5', serialNo: '০০৫', name: 'জামাল হোসেন', phone: '01511-667788', village: 'সাভার', totalDue: 0, lastTransactionDate: '২৩ আগ ২০২৬', status: 'active' },
-  { id: '6', serialNo: '০০৬', name: 'শাহিদুল ইসলাম', phone: '01311-778899', village: 'কেরানীগঞ্জ', totalDue: 5700, lastTransactionDate: '২২ আগ ২০২৬', status: 'overdue' },
-  { id: '7', serialNo: '০০৭', name: 'নাজমা আক্তার', phone: '01211-889900', village: 'ডেমরা, ঢাকা', totalDue: 0, lastTransactionDate: '২০ আগ ২০২৬', status: 'inactive' },
-  { id: '8', serialNo: '০০৮', name: 'আবু সাঈদ', phone: '01411-990011', village: 'আদাবর, ঢাকা', totalDue: 33400, lastTransactionDate: '১৮ আগ ২০২৬', status: 'overdue' },
-];
-
 type FilterKey = 'সব' | 'বকেয়া' | 'পরিশোধিত' | 'নিষ্ক্রিয়';
 const FILTERS: FilterKey[] = ['সব', 'বকেয়া', 'পরিশোধিত', 'নিষ্ক্রিয়'];
 
@@ -46,25 +37,20 @@ export const CustomersScreen = () => {
     setTimeout(() => setRefreshing(false), 900);
   };
 
-  const filtered = useMemo(() => {
-    return ALL_CUSTOMERS.filter((c) => {
-      const matchesSearch =
-        !search.trim() ||
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.phone.includes(search) ||
-        c.serialNo.includes(search);
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['customers', { status: activeFilter === 'সব' ? undefined : activeFilter === 'নিষ্ক্রিয়' ? 'INACTIVE' : 'ACTIVE', hasDue: activeFilter === 'বকেয়া' ? true : undefined, search }],
+    queryFn: () => customersApi.getCustomers({
+      status: activeFilter === 'সব' ? undefined : activeFilter === 'নিষ্ক্রিয়' ? 'INACTIVE' : 'ACTIVE',
+      hasDue: activeFilter === 'বকেয়া' ? true : undefined,
+      search: search || undefined,
+    }),
+  });
 
-      const matchesFilter =
-        activeFilter === 'সব' ||
-        (activeFilter === 'বকেয়া' && c.status === 'overdue') ||
-        (activeFilter === 'পরিশোধিত' && c.status === 'active') ||
-        (activeFilter === 'নিষ্ক্রিয়' && c.status === 'inactive');
+  const filtered = data?.items || [];
 
-      return matchesSearch && matchesFilter;
-    });
-  }, [search, activeFilter]);
-
-  const totalDue = ALL_CUSTOMERS.reduce((s, c) => s + c.totalDue, 0);
+  const totalDue = filtered.reduce((s, c) => s + Number(c.currentBalance), 0);
+  const overdueCount = filtered.filter((c) => Number(c.currentBalance) < 0).length;
+  const inactiveCount = filtered.filter((c) => c.status === 'INACTIVE').length;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -74,9 +60,13 @@ export const CustomersScreen = () => {
       <View style={styles.pageHeader}>
         <View>
           <Text style={styles.pageTitle}>গ্রাহক তালিকা</Text>
-          <Text style={styles.pageSubtitle}>{ALL_CUSTOMERS.length} জন গ্রাহক</Text>
+          <Text style={styles.pageSubtitle}>{data?.meta?.total || 0} জন গ্রাহক</Text>
         </View>
-        <TouchableOpacity style={styles.exportBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.exportBtn}
+          activeOpacity={0.7}
+          onPress={() => Alert.alert('রপ্তানি অক্ষম', 'রিপোর্ট ডাউনলোড করার জন্য ব্যাকএন্ড API এবং স্টোরেজ অনুমতি প্রয়োজন।')}
+        >
           <Feather name="download" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -84,20 +74,20 @@ export const CustomersScreen = () => {
       {/* ── Summary strip ───────────────────────────────────────────── */}
       <View style={styles.summaryStrip}>
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{ALL_CUSTOMERS.length}</Text>
+          <Text style={styles.summaryValue}>{data?.meta?.total || 0}</Text>
           <Text style={styles.summaryLabel}>মোট গ্রাহক</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={[styles.summaryValue, { color: colors.danger }]}>
-            {ALL_CUSTOMERS.filter((c) => c.status === 'overdue').length}
+            {overdueCount}
           </Text>
           <Text style={styles.summaryLabel}>বকেয়া</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={[styles.summaryValue, { color: colors.danger }]}>
-            ৳ {totalDue.toLocaleString()}
+            ৳ {totalDue.toLocaleString('en-IN')}
           </Text>
           <Text style={styles.summaryLabel}>মোট বকেয়া</Text>
         </View>
@@ -115,8 +105,8 @@ export const CustomersScreen = () => {
         onSelect={setActiveFilter}
         variant="primary"
         counts={{
-          'বকেয়া': ALL_CUSTOMERS.filter((c) => c.status === 'overdue').length,
-          'নিষ্ক্রিয়': ALL_CUSTOMERS.filter((c) => c.status === 'inactive').length,
+          'বকেয়া': overdueCount,
+          'নিষ্ক্রিয়': inactiveCount,
         }}
       />
 
@@ -128,15 +118,23 @@ export const CustomersScreen = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+            refreshing={isRefetching}
+            onRefresh={refetch}
             colors={[colors.primary]}
             tintColor={colors.primary}
           />
         }
         renderItem={({ item }) => (
           <CustomerCard
-            customer={item}
+            customer={{
+              id: item.id,
+              name: item.name,
+              phone: item.phone,
+              serialNo: `CUS-${item.id.substring(0, 4)}`,
+              status: item.status === 'INACTIVE' ? 'inactive' : Number(item.currentBalance) < 0 ? 'overdue' : 'active',
+              totalDue: Number(item.currentBalance) < 0 ? Math.abs(Number(item.currentBalance)) : 0,
+              avatar: item.avatarUrl || null,
+            } as unknown as Customer}
             onPress={() => router.push(`/customers/${item.id}`)}
           />
         )}
@@ -263,6 +261,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: theme.spacing.md,
-    paddingBottom: 100,
+    paddingBottom: 24,
   },
 });

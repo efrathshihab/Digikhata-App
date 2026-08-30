@@ -101,6 +101,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   barContent: {
     flexDirection: 'row',

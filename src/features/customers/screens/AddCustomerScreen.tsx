@@ -17,6 +17,8 @@ import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 import { AppInput } from '@/components/ui/AppInput';
 import { AppButton } from '@/components/ui/AppButton';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { customersApi } from '@/api/customers.api';
 
 interface FormData {
   serialNo: string;
@@ -30,11 +32,28 @@ interface FormData {
 interface FormErrors {
   name?: string;
   phone?: string;
+  openingBalance?: string;
 }
 
 export const AddCustomerScreen = () => {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+
+  const createCustomerMutation = useMutation({
+    mutationFn: customersApi.createCustomer,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      Alert.alert('সফল', 'নতুন গ্রাহক যোগ করা হয়েছে।', [
+        { text: 'ঠিক আছে', onPress: () => router.back() },
+      ]);
+    },
+    onError: (error: any) => {
+      console.log('Error creating customer:', error);
+      Alert.alert('ত্রুটি', error.response?.data?.message || 'গ্রাহক যোগ করতে সমস্যা হয়েছে।');
+    }
+  });
+
   const [form, setForm] = useState<FormData>({
     serialNo: '',
     name: '',
@@ -54,21 +73,45 @@ export const AddCustomerScreen = () => {
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
-    if (!form.name.trim()) newErrors.name = 'গ্রাহকের নাম আবশ্যক';
-    if (!form.phone.trim()) newErrors.phone = 'ফোন নম্বর আবশ্যক';
+    
+    if (!form.name.trim()) {
+      newErrors.name = 'গ্রাহকের নাম আবশ্যক';
+    }
+
+    if (!form.phone.trim()) {
+      newErrors.phone = 'ফোন নম্বর আবশ্যক';
+    } else {
+      const phoneClean = form.phone.replace(/[-\s]/g, '');
+      const bdPhoneRegex = /^(?:\+8801|01)[3-9]\d{8}$/;
+      if (!bdPhoneRegex.test(phoneClean)) {
+        newErrors.phone = 'সঠিক বাংলাদেশি ফোন নম্বর দিন (যেমন: 01XXXXXXXXX)';
+      }
+    }
+
+    if (form.openingBalance.trim()) {
+      const bal = parseFloat(form.openingBalance);
+      if (isNaN(bal)) {
+        newErrors.openingBalance = 'বৈধ সংখ্যা লিখুন';
+      } else if (bal < 0) {
+        newErrors.openingBalance = 'বকেয়া ঋণাত্মক হতে পারবে না';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
+    if (createCustomerMutation.isPending) return;
     if (!validate()) return;
-    setLoading(true);
-    // TODO: API call here
-    await new Promise((r) => setTimeout(r, 1000));
-    setLoading(false);
-    Alert.alert('সফল', 'নতুন গ্রাহক যোগ করা হয়েছে।', [
-      { text: 'ঠিক আছে', onPress: () => router.back() },
-    ]);
+    
+    createCustomerMutation.mutate({
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      address: form.address.trim() || undefined,
+      area: form.village.trim() || undefined,
+      openingBalance: form.openingBalance.trim() ? (parseFloat(form.openingBalance) || 0).toFixed(2) : undefined,
+    });
   };
 
   return (
@@ -170,6 +213,7 @@ export const AddCustomerScreen = () => {
                 value={form.openingBalance}
                 onChangeText={update('openingBalance')}
                 keyboardType="numeric"
+                error={errors.openingBalance}
                 leftIcon={<Text style={styles.tkSign}>৳</Text>}
               />
               <Text style={styles.hint}>
@@ -182,11 +226,11 @@ export const AddCustomerScreen = () => {
         {/* Submit button */}
         <View style={styles.submitWrap}>
           <AppButton
-            title="গ্রাহক সংরক্ষণ করুন"
-            onPress={handleSubmit}
-            loading={loading}
-            icon={<Feather name="user-check" size={16} color={colors.surface} />}
-          />
+          title="সংরক্ষণ করুন"
+          onPress={handleSubmit}
+          loading={createCustomerMutation.isPending}
+          icon={!createCustomerMutation.isPending ? <Feather name="check" size={18} color={colors.surface} /> : undefined}
+        />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

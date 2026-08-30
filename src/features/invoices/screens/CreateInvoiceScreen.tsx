@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,18 +11,30 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 import { AppInput } from '@/components/ui/AppInput';
 import { AppButton } from '@/components/ui/AppButton';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { purchasesApi } from '@/api/purchases.api';
+import { customersApi } from '@/api/customers.api';
 
 interface InvoiceItem {
   id: string;
   name: string;
   qty: string;
   price: string;
+}
+
+interface FormErrors {
+  customerName?: string;
+  customerPhone?: string;
+  items?: Record<string, { name?: string; qty?: string; price?: string }>;
+  discount?: string;
+  transport?: string;
+  paid?: string;
 }
 
 const emptyItem = (): InvoiceItem => ({
@@ -34,14 +46,19 @@ const emptyItem = (): InvoiceItem => ({
 
 export const CreateInvoiceScreen = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { customerId: paramCustomerId, name, phone } = useLocalSearchParams<{ customerId?: string; name?: string; phone?: string }>();
+  
   const [loading, setLoading] = useState(false);
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerName, setCustomerName] = useState(name ?? '');
+  const [customerPhone, setCustomerPhone] = useState(phone ?? '');
   const [items, setItems] = useState<InvoiceItem[]>([emptyItem()]);
   const [discount, setDiscount] = useState('');
   const [transport, setTransport] = useState('');
   const [paid, setPaid] = useState('');
   const [note, setNote] = useState('');
+  
+  const [errors, setErrors] = useState<FormErrors>({});
 
   const updateItem = (id: string, key: keyof InvoiceItem, value: string) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
@@ -65,17 +82,142 @@ export const CreateInvoiceScreen = () => {
   const paidAmt = parseFloat(paid) || 0;
   const dueAmt = Math.max(0, grandTotal - paidAmt);
 
-  const handleSubmit = async () => {
+  const validate = (): boolean => {
+    const nextErrors: FormErrors = {};
+    let valid = true;
+
     if (!customerName.trim()) {
-      Alert.alert('সতর্কতা', 'গ্রাহকের নাম আবশ্যক।');
-      return;
+      nextErrors.customerName = 'গ্রাহকের নাম আবশ্যক';
+      valid = false;
     }
+
+    if (customerPhone.trim()) {
+      const phoneClean = customerPhone.replace(/[-\s]/g, '');
+      const bdPhoneRegex = /^(?:\+8801|01)[3-9]\d{8}$/;
+      if (!bdPhoneRegex.test(phoneClean)) {
+        nextErrors.customerPhone = 'সঠিক বাংলাদেশি ফোন নম্বর দিন';
+        valid = false;
+      }
+    }
+
+    // Items validation
+    const itemErrors: Record<string, { name?: string; qty?: string; price?: string }> = {};
+    let itemHasError = false;
+
+    if (items.length === 0) {
+      Alert.alert('সতর্কতা', 'কমপক্ষে একটি পণ্য যোগ করুন।');
+      return false;
+    }
+
+    items.forEach((item) => {
+      const errorsObj: { name?: string; qty?: string; price?: string } = {};
+      if (!item.name.trim()) {
+        errorsObj.name = 'পণ্যের নাম আবশ্যক';
+        itemHasError = true;
+      }
+      
+      const qtyVal = parseFloat(item.qty);
+      if (isNaN(qtyVal) || qtyVal <= 0) {
+        errorsObj.qty = 'পরিমাণ > ০ হতে হবে';
+        itemHasError = true;
+      }
+
+      const priceVal = parseFloat(item.price);
+      if (isNaN(priceVal) || priceVal < 0) {
+        errorsObj.price = 'মূল্য >= ০ হতে হবে';
+        itemHasError = true;
+      }
+
+      if (Object.keys(errorsObj).length > 0) {
+        itemErrors[item.id] = errorsObj;
+      }
+    });
+
+    if (itemHasError) {
+      nextErrors.items = itemErrors;
+      valid = false;
+    }
+
+    // Calculation validation
+    if (discount.trim()) {
+      const val = parseFloat(discount);
+      if (isNaN(val) || val < 0) {
+        nextErrors.discount = 'বৈধ ইতিবাচক সংখ্যা লিখুন';
+        valid = false;
+      }
+    }
+
+    if (transport.trim()) {
+      const val = parseFloat(transport);
+      if (isNaN(val) || val < 0) {
+        nextErrors.transport = 'বৈধ ইতিবাচক সংখ্যা লিখুন';
+        valid = false;
+      }
+    }
+
+    if (paid.trim()) {
+      const val = parseFloat(paid);
+      if (isNaN(val) || val < 0) {
+        nextErrors.paid = 'বৈধ ইতিবাচক সংখ্যা লিখুন';
+        valid = false;
+      }
+    }
+
+    setErrors(nextErrors);
+    return valid;
+  };
+
+  const idempotencyKeyRef = useRef(`purchase_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`);
+
+  const handleSubmit = async () => {
+    if (loading) return;
+    if (!validate()) return;
+    
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setLoading(false);
-    Alert.alert('সফল', 'ইনভয়েস তৈরি হয়েছে!', [
-      { text: 'ঠিক আছে', onPress: () => router.back() },
-    ]);
+    try {
+      let activeCustomerId = paramCustomerId;
+
+      // 1. If no customerId is provided, we might need to create a customer on the fly
+      if (!activeCustomerId) {
+        const newCustomer = await customersApi.createCustomer({
+          name: customerName,
+          phone: customerPhone,
+        });
+        activeCustomerId = newCustomer.id;
+      }
+
+      // 2. Map items with precise string decimals and quantities
+      const purchaseItems = items.map(i => ({
+        name: i.name.trim(),
+        quantity: (parseFloat(i.qty) || 0).toString(),
+        unitPrice: (parseFloat(i.price) || 0).toFixed(2),
+      }));
+
+      // 3. Create purchase with reused idempotencyKeyRef
+      await purchasesApi.createPurchase({
+        customerId: activeCustomerId,
+        items: purchaseItems,
+        discount: discount.trim() ? (parseFloat(discount) || 0).toFixed(2) : undefined,
+        notes: note.trim() ? note.trim() : undefined,
+        delivery: transport.trim() ? { address: '', contact: customerPhone, transportCharge: (parseFloat(transport) || 0).toFixed(2) } : undefined,
+        initialPayment: paid.trim() ? { amount: (parseFloat(paid) || 0).toFixed(2), method: 'CASH' } : undefined,
+      }, idempotencyKeyRef.current);
+
+      // 4. Invalidate cache
+      queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customerLedger', activeCustomerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer', activeCustomerId] });
+
+      Alert.alert('সফল', 'ইনভয়েস তৈরি হয়েছে!', [
+        { text: 'ঠিক আছে', onPress: () => router.back() },
+      ]);
+    } catch (error: any) {
+      console.log('Error creating purchase:', error);
+      Alert.alert('ত্রুটি', error.response?.data?.message || 'ইনভয়েস তৈরি করতে সমস্যা হয়েছে।');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -108,15 +250,23 @@ export const CreateInvoiceScreen = () => {
                 label="গ্রাহকের নাম *"
                 placeholder="নাম লিখুন বা নির্বাচন করুন"
                 value={customerName}
-                onChangeText={setCustomerName}
+                onChangeText={(v) => {
+                  setCustomerName(v);
+                  if (errors.customerName) setErrors(prev => ({ ...prev, customerName: undefined }));
+                }}
+                error={errors.customerName}
                 leftIcon={<Feather name="user" size={16} color={colors.textMuted} />}
               />
               <AppInput
                 label="ফোন নম্বর"
                 placeholder="01XXXXXXXXX"
                 value={customerPhone}
-                onChangeText={setCustomerPhone}
+                onChangeText={(v) => {
+                  setCustomerPhone(v);
+                  if (errors.customerPhone) setErrors(prev => ({ ...prev, customerPhone: undefined }));
+                }}
                 keyboardType="phone-pad"
+                error={errors.customerPhone}
                 leftIcon={<Feather name="phone" size={16} color={colors.textMuted} />}
                 autoCapitalize="none"
               />
@@ -138,28 +288,64 @@ export const CreateInvoiceScreen = () => {
                     )}
                   </View>
                   <AppInput
-                    label="পণ্যের নাম"
+                    label="পণ্যের নাম *"
                     placeholder="পণ্য বা সেবার নাম"
                     value={item.name}
-                    onChangeText={(v) => updateItem(item.id, 'name', v)}
+                    onChangeText={(v) => {
+                      updateItem(item.id, 'name', v);
+                      if (errors.items?.[item.id]?.name) {
+                        setErrors(prev => ({
+                          ...prev,
+                          items: {
+                            ...prev.items,
+                            [item.id]: { ...prev.items?.[item.id], name: undefined }
+                          }
+                        }));
+                      }
+                    }}
+                    error={errors.items?.[item.id]?.name}
                   />
                   <View style={styles.priceRow}>
                     <View style={styles.priceField}>
                       <AppInput
-                        label="পরিমাণ"
+                        label="পরিমাণ *"
                         placeholder="১"
                         value={item.qty}
-                        onChangeText={(v) => updateItem(item.id, 'qty', v)}
+                        onChangeText={(v) => {
+                          updateItem(item.id, 'qty', v);
+                          if (errors.items?.[item.id]?.qty) {
+                            setErrors(prev => ({
+                              ...prev,
+                              items: {
+                                ...prev.items,
+                                [item.id]: { ...prev.items?.[item.id], qty: undefined }
+                              }
+                            }));
+                          }
+                        }}
                         keyboardType="numeric"
+                        error={errors.items?.[item.id]?.qty}
                       />
                     </View>
                     <View style={styles.priceField}>
                       <AppInput
-                        label="একক মূল্য (৳)"
+                        label="একক মূল্য (৳) *"
                         placeholder="০"
                         value={item.price}
-                        onChangeText={(v) => updateItem(item.id, 'price', v)}
+                        onChangeText={(v) => {
+                          updateItem(item.id, 'price', v);
+                          if (errors.items?.[item.id]?.price) {
+                            setErrors(prev => ({
+                              ...prev,
+                              items: {
+                                ...prev.items,
+                                [item.id]: { ...prev.items?.[item.id], price: undefined }
+                              }
+                            }));
+                          }
+                        }}
                         keyboardType="numeric"
+                        error={errors.items?.[item.id]?.price}
                       />
                     </View>
                     <View style={styles.priceField}>
@@ -194,16 +380,24 @@ export const CreateInvoiceScreen = () => {
                 label="ছাড় (৳)"
                 placeholder="০"
                 value={discount}
-                onChangeText={setDiscount}
+                onChangeText={(v) => {
+                  setDiscount(v);
+                  if (errors.discount) setErrors(prev => ({ ...prev, discount: undefined }));
+                }}
                 keyboardType="numeric"
+                error={errors.discount}
                 leftIcon={<Feather name="tag" size={16} color={colors.textMuted} />}
               />
               <AppInput
                 label="পরিবহন / ডেলিভারি (৳)"
                 placeholder="০"
                 value={transport}
-                onChangeText={setTransport}
+                onChangeText={(v) => {
+                  setTransport(v);
+                  if (errors.transport) setErrors(prev => ({ ...prev, transport: undefined }));
+                }}
                 keyboardType="numeric"
+                error={errors.transport}
                 leftIcon={<Feather name="truck" size={16} color={colors.textMuted} />}
               />
 
@@ -216,8 +410,12 @@ export const CreateInvoiceScreen = () => {
                 label="অগ্রিম পরিশোধ (৳)"
                 placeholder="০"
                 value={paid}
-                onChangeText={setPaid}
+                onChangeText={(v) => {
+                  setPaid(v);
+                  if (errors.paid) setErrors(prev => ({ ...prev, paid: undefined }));
+                }}
                 keyboardType="numeric"
+                error={errors.paid}
                 leftIcon={<Text style={styles.tkSign}>৳</Text>}
               />
 

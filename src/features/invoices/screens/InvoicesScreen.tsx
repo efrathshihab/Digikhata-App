@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,46 +18,63 @@ import { InvoiceCard, Invoice } from '@/components/ui/InvoiceCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-const ALL_INVOICES: Invoice[] = [
-  { id: '1', invoiceNo: 'INV-০০১৫', customerName: 'রহিম উদ্দিন', date: '২৭ আগ ২০২৬', total: 25000, paid: 9500, due: 15500, status: 'partial' },
-  { id: '2', invoiceNo: 'INV-০০১৪', customerName: 'করিম মিয়া', date: '২৬ আগ ২০২৬', total: 8200, paid: 0, due: 8200, status: 'unpaid' },
-  { id: '3', invoiceNo: 'INV-০০১৩', customerName: 'মোঃ সালাউদ্দিন', date: '২৫ আগ ২০২৬', total: 12000, paid: 12000, due: 0, status: 'paid' },
-  { id: '4', invoiceNo: 'INV-০০১২', customerName: 'সুমাইয়া বেগম', date: '২৪ আগ ২০২৬', total: 22000, paid: 0, due: 22000, status: 'unpaid' },
-  { id: '5', invoiceNo: 'INV-০০১১', customerName: 'মোঃ সালাউদ্দিন', date: '২০ আগ ২০২৬', total: 20500, paid: 20500, due: 0, status: 'paid' },
-  { id: '6', invoiceNo: 'INV-০০১০', customerName: 'জামাল হোসেন', date: '১৮ আগ ২০২৬', total: 15000, paid: 9000, due: 6000, status: 'partial' },
-];
+import { FilterBar } from '@/components/ui/FilterChip';
+import { useQuery } from '@tanstack/react-query';
+import { purchasesApi, PurchaseListItem } from '@/api/purchases.api';
+import { RefreshControl } from 'react-native';
 
 type FilterKey = 'সব' | 'পরিশোধিত' | 'আংশিক' | 'বকেয়া';
 const FILTERS: FilterKey[] = ['সব', 'পরিশোধিত', 'আংশিক', 'বকেয়া'];
-
-const filterToStatus: Record<FilterKey, string | null> = {
-  'সব': null,
-  'পরিশোধিত': 'paid',
-  'আংশিক': 'partial',
-  'বকেয়া': 'unpaid',
-};
 
 export const InvoicesScreen = () => {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('সব');
 
-  const filtered = useMemo(() => {
-    const status = filterToStatus[activeFilter];
-    return ALL_INVOICES.filter((inv) => {
-      const matchesSearch =
-        !search.trim() ||
-        inv.customerName.toLowerCase().includes(search.toLowerCase()) ||
-        inv.invoiceNo.includes(search);
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['purchases', { search }],
+    queryFn: () => purchasesApi.getPurchases({ search: search || undefined, limit: 100 }),
+  });
 
-      const matchesFilter = !status || inv.status === status;
-      return matchesSearch && matchesFilter;
+  const purchases = data?.items || [];
+
+  const invoiceItems: Invoice[] = useMemo(() => {
+    return purchases.map((p) => {
+      const total = Number(p.invoice?.totalAmount || p.netAmount || 0);
+      const due = Number(p.invoice?.dueAmount || 0);
+      const paid = Math.max(0, total - due);
+      let status: 'paid' | 'partial' | 'unpaid' = 'unpaid';
+      if (due <= 0) {
+        status = 'paid';
+      } else if (due < total) {
+        status = 'partial';
+      }
+
+      return {
+        id: p.id,
+        invoiceNo: p.invoice?.invoiceNumber || `INV-${p.id.substring(0, 4)}`,
+        customerName: p.customer?.name || 'অজানা গ্রাহক',
+        date: new Date(p.purchaseDate).toLocaleDateString('bn-BD'),
+        total,
+        paid,
+        due,
+        status,
+      };
     });
-  }, [search, activeFilter]);
+  }, [purchases]);
 
-  const totalDue = ALL_INVOICES.reduce((s, inv) => s + inv.due, 0);
-  const totalCollected = ALL_INVOICES.reduce((s, inv) => s + inv.paid, 0);
+  const filtered = useMemo(() => {
+    return invoiceItems.filter((inv) => {
+      if (activeFilter === 'পরিশোধিত') return inv.status === 'paid';
+      if (activeFilter === 'আংশিক') return inv.status === 'partial';
+      if (activeFilter === 'বকেয়া') return inv.status === 'unpaid';
+      return true;
+    });
+  }, [invoiceItems, activeFilter]);
+
+  const totalDue = invoiceItems.reduce((s, inv) => s + inv.due, 0);
+  const totalCollected = invoiceItems.reduce((s, inv) => s + inv.paid, 0);
+  const paidCount = invoiceItems.filter((i) => i.status === 'paid').length;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -66,9 +84,13 @@ export const InvoicesScreen = () => {
       <View style={styles.pageHeader}>
         <View>
           <Text style={styles.pageTitle}>ইনভয়েস</Text>
-          <Text style={styles.pageSubtitle}>{ALL_INVOICES.length}টি ইনভয়েস</Text>
+          <Text style={styles.pageSubtitle}>{data?.meta?.total || invoiceItems.length}টি ইনভয়েস</Text>
         </View>
-        <TouchableOpacity style={styles.exportBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.exportBtn}
+          activeOpacity={0.7}
+          onPress={() => Alert.alert('রপ্তানি অক্ষম', 'ইনভয়েস তালিকা ডাউনলোড করার জন্য ব্যাকএন্ড API এবং স্টোরেজ অনুমতি প্রয়োজন।')}
+        >
           <Feather name="download" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -77,21 +99,21 @@ export const InvoicesScreen = () => {
       <View style={styles.summaryStrip}>
         <View style={styles.summaryItem}>
           <Text style={[styles.summaryValue, { color: colors.success }]}>
-            ৳ {totalCollected.toLocaleString()}
+            ৳ {totalCollected.toLocaleString('en-IN')}
           </Text>
           <Text style={styles.summaryLabel}>আদায়</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={[styles.summaryValue, { color: colors.danger }]}>
-            ৳ {totalDue.toLocaleString()}
+            ৳ {totalDue.toLocaleString('en-IN')}
           </Text>
           <Text style={styles.summaryLabel}>বকেয়া</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>
-            {ALL_INVOICES.filter((i) => i.status === 'paid').length}
+            {paidCount}
           </Text>
           <Text style={styles.summaryLabel}>পরিশোধিত</Text>
         </View>
@@ -107,25 +129,12 @@ export const InvoicesScreen = () => {
       </View>
 
       {/* Filters */}
-      <View style={styles.filtersRow}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f}
-            onPress={() => setActiveFilter(f)}
-            activeOpacity={0.7}
-            style={[styles.filterChip, activeFilter === f && styles.filterChipActive]}
-          >
-            <Text
-              style={[
-                styles.filterLabel,
-                activeFilter === f && styles.filterLabelActive,
-              ]}
-            >
-              {f}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <FilterBar
+        options={FILTERS}
+        active={activeFilter}
+        onSelect={setActiveFilter}
+        variant="primary"
+      />
 
       {/* List */}
       <FlatList
@@ -133,6 +142,14 @@ export const InvoicesScreen = () => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
         renderItem={({ item }) => (
           <InvoiceCard
             invoice={item}
@@ -224,5 +241,5 @@ const styles = StyleSheet.create({
   },
   filterLabel: { fontSize: 13, fontWeight: '500', color: colors.textSecondary },
   filterLabelActive: { color: colors.primary, fontWeight: '700' },
-  listContent: { padding: theme.spacing.md, paddingBottom: 100 },
+  listContent: { padding: theme.spacing.md, paddingBottom: 24 },
 });

@@ -17,15 +17,12 @@ import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 import { AppInput } from '@/components/ui/AppInput';
 import { AppButton } from '@/components/ui/AppButton';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { customersApi } from '@/api/customers.api';
+import { paymentsApi, CreatePaymentInput } from '@/api/payments.api';
 
 // ── Mock data lookup ──────────────────────────────────────────────────────────
-const CUSTOMER_LOOKUP: Record<string, { name: string; phone: string; due: number; invoice: string }> = {
-  '1': { name: 'রহিম উদ্দিন', phone: '01711-223344', due: 15500, invoice: 'INV-০০১৫' },
-  '2': { name: 'করিম মিয়া', phone: '01812-334455', due: 8200, invoice: 'INV-০০১৪' },
-  '4': { name: 'সুমাইয়া বেগম', phone: '01611-556677', due: 22000, invoice: 'INV-০০১২' },
-  '6': { name: 'শাহিদুল ইসলাম', phone: '01311-778899', due: 5700, invoice: 'INV-০০১০' },
-  '8': { name: 'আবু সাঈদ', phone: '01411-990011', due: 33400, invoice: 'INV-০০০৮' },
-};
+// Replaced by real API data
 
 const PAYMENT_METHODS = ['নগদ', 'bKash', 'Nagad', 'ব্যাংক', 'অন্যান্য'];
 
@@ -51,32 +48,101 @@ const MethodPill = ({
 // ── Main screen ───────────────────────────────────────────────────────────────
 export const ReceivePaymentScreen = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { customerId, invoiceId } = useLocalSearchParams<{ customerId?: string; invoiceId?: string }>();
 
-  const customer = customerId ? CUSTOMER_LOOKUP[customerId] : null;
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(customerId ?? null);
+  const [customerSearch, setCustomerSearch] = useState('');
 
-  const [amount, setAmount] = useState(customer ? customer.due.toString() : '');
+  const { data: customersData } = useQuery({
+    queryKey: ['customers', { limit: 100 }],
+    queryFn: () => customersApi.getCustomers({ limit: 100 }),
+  });
+
+  const { data: selectedCustomer } = useQuery({
+    queryKey: ['customer', selectedCustomerId],
+    queryFn: () => customersApi.getCustomer(selectedCustomerId!),
+    enabled: !!selectedCustomerId,
+  });
+
+  const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('নগদ');
   const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ customer?: string; amount?: string }>({});
 
+  const idempotencyKeyRef = React.useRef(`payment_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`);
+
+  const paymentMutation = useMutation({
+    mutationFn: (data: CreatePaymentInput) => paymentsApi.createPayment(data, idempotencyKeyRef.current),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customerLedger', selectedCustomerId] });
+      queryClient.invalidateQueries({ queryKey: ['customer', selectedCustomerId] });
+      
+      Alert.alert(
+        'সফল',
+        `৳ ${parsedAmount.toLocaleString()} পেমেন্ট সফলভাবে গ্রহণ করা হয়েছে।`,
+        [{ text: 'ঠিক আছে', onPress: () => router.back() }]
+      );
+    },
+    onError: (error: any) => {
+      console.log('Error creating payment:', error);
+      Alert.alert('ত্রুটি', error.response?.data?.message || 'পেমেন্ট তৈরি করতে সমস্যা হয়েছে।');
+    }
+  });
+
+  // Automatically set amount when customer is loaded if they have due
+  React.useEffect(() => {
+    if (selectedCustomer && !amount) {
+      const balance = Number(selectedCustomer.currentBalance);
+      if (balance < 0) {
+        setAmount(Math.abs(balance).toString());
+      }
+    }
+  }, [selectedCustomer]);
+
+  const maxDue = selectedCustomer ? (Number(selectedCustomer.currentBalance) < 0 ? Math.abs(Number(selectedCustomer.currentBalance)) : 0) : 0;
   const parsedAmount = parseFloat(amount) || 0;
-  const maxDue = customer?.due ?? 0;
   const isOverpayment = parsedAmount > maxDue && maxDue > 0;
 
-  const handleSubmit = async () => {
-    if (!parsedAmount || parsedAmount <= 0) {
-      Alert.alert('সতর্কতা', 'বৈধ পরিমাণ লিখুন।');
-      return;
+  const validate = () => {
+    const nextErrors: { customer?: string; amount?: string } = {};
+    let valid = true;
+
+    if (!selectedCustomerId) {
+      nextErrors.customer = 'গ্রাহক নির্বাচন করা আবশ্যক';
+      valid = false;
     }
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setLoading(false);
-    Alert.alert(
-      'সফল',
-      `৳ ${parsedAmount.toLocaleString()} পেমেন্ট সফলভাবে গ্রহণ করা হয়েছে।`,
-      [{ text: 'ঠিক আছে', onPress: () => router.back() }]
-    );
+
+    const parsedAmt = parseFloat(amount) || 0;
+    if (!amount.trim()) {
+      nextErrors.amount = 'পেমেন্টের পরিমাণ আবশ্যক';
+      valid = false;
+    } else if (isNaN(parsedAmt) || parsedAmt <= 0) {
+      nextErrors.amount = 'সঠিক পেমেন্ট পরিমাণ লিখুন';
+      valid = false;
+    }
+
+    setErrors(nextErrors);
+    return valid;
+  };
+
+  const handleSubmit = () => {
+    if (paymentMutation.isPending) return;
+    if (!validate()) return;
+    if (!selectedCustomerId) return;
+
+    let apiMethod: 'CASH' | 'MOBILE_BANKING' | 'BANK_TRANSFER' = 'CASH';
+    if (method === 'bKash' || method === 'Nagad') apiMethod = 'MOBILE_BANKING';
+    if (method === 'ব্যাংক') apiMethod = 'BANK_TRANSFER';
+
+    paymentMutation.mutate({
+      customerId: selectedCustomerId,
+      amount: parsedAmount.toFixed(2),
+      method: apiMethod,
+      note: note ? note : undefined,
+    });
   };
 
   return (
@@ -102,28 +168,79 @@ export const ReceivePaymentScreen = () => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Customer info card */}
-          {customer && (
+          {/* Customer info card / selector */}
+          {selectedCustomer ? (
             <View style={styles.customerCard}>
               <View style={styles.customerAvatar}>
-                <Text style={styles.customerAvatarText}>{customer.name.charAt(0)}</Text>
+                <Text style={styles.customerAvatarText}>{selectedCustomer.name.charAt(0)}</Text>
               </View>
               <View style={styles.customerInfo}>
-                <Text style={styles.customerName}>{customer.name}</Text>
-                <Text style={styles.customerPhone}>{customer.phone}</Text>
+                <Text style={styles.customerName}>{selectedCustomer.name}</Text>
+                <Text style={styles.customerPhone}>{selectedCustomer.phone}</Text>
               </View>
               <View style={styles.dueBox}>
                 <Text style={styles.dueBoxLabel}>বকেয়া</Text>
-                <Text style={styles.dueBoxAmount}>৳ {customer.due.toLocaleString()}</Text>
+                <Text style={styles.dueBoxAmount}>৳ {maxDue.toLocaleString()}</Text>
               </View>
+              {!customerId && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedCustomerId(null);
+                    setAmount('');
+                  }}
+                  style={styles.changeBtn}
+                >
+                  <Text style={styles.changeBtnText}>পরিবর্তন</Text>
+                </TouchableOpacity>
+              )}
             </View>
-          )}
-
-          {/* Invoice ref */}
-          {customer && (
-            <View style={styles.invoiceRef}>
-              <Feather name="file-text" size={14} color={colors.primary} />
-              <Text style={styles.invoiceRefText}>ইনভয়েস: {customer.invoice}</Text>
+          ) : (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>গ্রাহক নির্বাচন করুন *</Text>
+              <AppInput
+                placeholder="গ্রাহকের নাম বা ফোন নম্বর লিখুন..."
+                value={customerSearch}
+                onChangeText={setCustomerSearch}
+                leftIcon={<Feather name="search" size={16} color={colors.textMuted} />}
+              />
+              <View style={styles.selectorList}>
+                {customersData?.items
+                  ?.filter((c) => 
+                    !customerSearch.trim() ||
+                    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+                    c.phone.includes(customerSearch)
+                  )
+                  .map((c) => {
+                    const cDue = Number(c.currentBalance) < 0 ? Math.abs(Number(c.currentBalance)) : 0;
+                    return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.selectorItem}
+                      onPress={() => {
+                        setSelectedCustomerId(c.id);
+                        if (cDue > 0) {
+                          setAmount(cDue.toString());
+                        }
+                        if (errors.customer) setErrors(prev => ({ ...prev, customer: undefined }));
+                      }}
+                    >
+                      <View style={styles.selectorItemLeft}>
+                        <View style={styles.itemAvatar}>
+                          <Text style={styles.itemAvatarText}>{c.name.charAt(0)}</Text>
+                        </View>
+                        <View>
+                          <Text style={styles.selectorName}>{c.name}</Text>
+                          <Text style={styles.selectorPhone}>{c.phone}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.selectorItemRight}>
+                        <Text style={styles.selectorDueLabel}>বকেয়া</Text>
+                        <Text style={styles.selectorDueValue}>৳ {cDue.toLocaleString()}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )})}
+              </View>
+              {errors.customer ? <Text style={styles.errorText}>{errors.customer}</Text> : null}
             </View>
           )}
 
@@ -134,8 +251,12 @@ export const ReceivePaymentScreen = () => {
               label="পরিমাণ (৳) *"
               placeholder="০"
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={(v) => {
+                setAmount(v);
+                if (errors.amount) setErrors(prev => ({ ...prev, amount: undefined }));
+              }}
               keyboardType="numeric"
+              error={errors.amount}
               leftIcon={<Text style={styles.tkSign}>৳</Text>}
             />
             {isOverpayment && (
@@ -200,10 +321,10 @@ export const ReceivePaymentScreen = () => {
 
         <View style={styles.submitWrap}>
           <AppButton
-            title="পেমেন্ট নিশ্চিত করুন"
+            title="পেমেন্ট গ্রহণ করুন"
             onPress={handleSubmit}
-            loading={loading}
-            icon={<Feather name="check-circle" size={16} color={colors.surface} />}
+            loading={paymentMutation.isPending}
+            icon={!paymentMutation.isPending ? <Feather name="check-circle" size={18} color={colors.surface} /> : undefined}
           />
         </View>
       </KeyboardAvoidingView>
@@ -348,5 +469,78 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  changeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  changeBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  selectorList: {
+    gap: 8,
+    marginTop: 8,
+  },
+  selectorItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  selectorItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  itemAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemAvatarText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  selectorName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  selectorPhone: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  selectorItemRight: {
+    alignItems: 'flex-end',
+  },
+  selectorDueLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  selectorDueValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  errorText: {
+    fontSize: 12,
+    color: colors.danger,
+    fontWeight: '500',
+    marginTop: 4,
   },
 });

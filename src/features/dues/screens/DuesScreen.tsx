@@ -16,6 +16,10 @@ import { theme } from '@/constants/theme';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { EmptyState } from '@/components/ui/EmptyState';
 
+import { useQuery } from '@tanstack/react-query';
+import { customersApi, Customer as ApiCustomer } from '@/api/customers.api';
+import { RefreshControl } from 'react-native';
+
 // ── Types ────────────────────────────────────────────────────────────────────
 interface DueItem {
   id: string;
@@ -24,18 +28,9 @@ interface DueItem {
   phone: string;
   village: string;
   totalDue: number;
-  daysSince: number; // days since last payment
-  lastInvoice: string;
+  daysSince: number;
+  lastInvoice?: string;
 }
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-const ALL_DUES: DueItem[] = [
-  { id: '1', serialNo: '০০১', name: 'রহিম উদ্দিন', phone: '01711-223344', village: 'মিরপুর, ঢাকা', totalDue: 15500, daysSince: 3, lastInvoice: 'INV-০০১৫' },
-  { id: '4', serialNo: '০০৪', name: 'সুমাইয়া বেগম', phone: '01611-556677', village: 'গাজীপুর', totalDue: 22000, daysSince: 6, lastInvoice: 'INV-০০১২' },
-  { id: '2', serialNo: '০০২', name: 'করিম মিয়া', phone: '01812-334455', village: 'মতিঝিল, ঢাকা', totalDue: 8200, daysSince: 4, lastInvoice: 'INV-০০১৪' },
-  { id: '8', serialNo: '০০৮', name: 'আবু সাঈদ', phone: '01411-990011', village: 'আদাবর, ঢাকা', totalDue: 33400, daysSince: 12, lastInvoice: 'INV-০০০৮' },
-  { id: '6', serialNo: '০০৬', name: 'শাহিদুল ইসলাম', phone: '01311-778899', village: 'কেরানীগঞ্জ', totalDue: 5700, daysSince: 8, lastInvoice: 'INV-০০১০' },
-];
 
 type FilterKey = 'সব' | 'জরুরি' | '৭+ দিন' | 'মাঝারি';
 const FILTERS: FilterKey[] = ['সব', 'জরুরি', '৭+ দিন', 'মাঝারি'];
@@ -59,7 +54,7 @@ function getUrgencyLabel(days: number): string {
 }
 
 // ── Due Card ─────────────────────────────────────────────────────────────────
-const DueCard = ({ item, onPress }: { item: DueItem; onPress: () => void }) => {
+const DueCard = ({ item, onPress, onCollect }: { item: DueItem; onPress: () => void; onCollect: () => void }) => {
   const urgencyColor = getUrgencyColor(item.daysSince);
   const urgencyBg = getUrgencyBg(item.daysSince);
 
@@ -86,7 +81,7 @@ const DueCard = ({ item, onPress }: { item: DueItem; onPress: () => void }) => {
               </View>
             </View>
             <Text style={styles.meta}>{item.village} · #{item.serialNo}</Text>
-            <Text style={styles.invoiceRef}>{item.lastInvoice}</Text>
+            {item.lastInvoice ? <Text style={styles.invoiceRef}>{item.lastInvoice}</Text> : null}
           </View>
         </View>
 
@@ -94,7 +89,7 @@ const DueCard = ({ item, onPress }: { item: DueItem; onPress: () => void }) => {
         <View style={styles.cardBottom}>
           <View>
             <Text style={styles.dueLabel}>বকেয়া পরিমাণ</Text>
-            <Text style={styles.dueAmount}>৳ {item.totalDue.toLocaleString()}</Text>
+            <Text style={styles.dueAmount}>৳ {item.totalDue.toLocaleString('en-IN')}</Text>
           </View>
           <View style={styles.cardActions}>
             <TouchableOpacity
@@ -113,7 +108,7 @@ const DueCard = ({ item, onPress }: { item: DueItem; onPress: () => void }) => {
               activeOpacity={0.7}
               onPress={(e) => {
                 e.stopPropagation();
-                onPress();
+                onCollect();
               }}
             >
               <Feather name="credit-card" size={14} color={colors.surface} />
@@ -132,24 +127,41 @@ export const DuesScreen = () => {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('সব');
 
-  const filtered = useMemo(() => {
-    return ALL_DUES.filter((d) => {
-      const matchesSearch =
-        !search.trim() ||
-        d.name.toLowerCase().includes(search.toLowerCase()) ||
-        d.phone.includes(search) ||
-        d.serialNo.includes(search);
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['duesCustomers', { search }],
+    queryFn: () => customersApi.getCustomers({ hasDue: true, search: search || undefined, limit: 100 }),
+  });
 
+  const dueItems: DueItem[] = useMemo(() => {
+    const items = data?.items || [];
+    return items
+      .filter(c => Number(c.currentBalance) < 0)
+      .map(c => {
+        const diffDays = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / (1000 * 60 * 60 * 24)) || 1;
+        return {
+          id: c.id,
+          serialNo: `CUS-${c.id.substring(0, 4)}`,
+          name: c.name,
+          phone: c.phone,
+          village: c.area || c.address || 'ঠিকানা নেই',
+          totalDue: Math.abs(Number(c.currentBalance)),
+          daysSince: Math.min(diffDays, 30),
+        };
+      });
+  }, [data]);
+
+  const filtered = useMemo(() => {
+    return dueItems.filter((d) => {
       const urgency = getUrgencyLabel(d.daysSince);
       const matchesFilter =
         activeFilter === 'সব' || urgency === activeFilter;
 
-      return matchesSearch && matchesFilter;
+      return matchesFilter;
     });
-  }, [search, activeFilter]);
+  }, [dueItems, activeFilter]);
 
-  const totalDue = ALL_DUES.reduce((s, d) => s + d.totalDue, 0);
-  const urgentCount = ALL_DUES.filter((d) => d.daysSince >= 10).length;
+  const totalDue = dueItems.reduce((s, d) => s + d.totalDue, 0);
+  const urgentCount = dueItems.filter((d) => d.daysSince >= 10).length;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -162,7 +174,7 @@ export const DuesScreen = () => {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>বকেয়া তালিকা</Text>
-          <Text style={styles.headerSub}>{ALL_DUES.length} জন গ্রাহক</Text>
+          <Text style={styles.headerSub}>{dueItems.length} জন গ্রাহক</Text>
         </View>
         <View style={styles.backBtn} />
       </View>
@@ -171,13 +183,13 @@ export const DuesScreen = () => {
       <View style={styles.summaryStrip}>
         <View style={styles.summaryItem}>
           <Text style={[styles.summaryValue, { color: colors.danger }]}>
-            ৳ {totalDue.toLocaleString()}
+            ৳ {totalDue.toLocaleString('en-IN')}
           </Text>
           <Text style={styles.summaryLabel}>মোট বকেয়া</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryValue}>{ALL_DUES.length}</Text>
+          <Text style={styles.summaryValue}>{dueItems.length}</Text>
           <Text style={styles.summaryLabel}>মোট গ্রাহক</Text>
         </View>
         <View style={styles.summaryDivider} />
@@ -218,10 +230,24 @@ export const DuesScreen = () => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
         renderItem={({ item }) => (
           <DueCard
             item={item}
             onPress={() => router.push(`/customers/${item.id}`)}
+            onCollect={() =>
+              router.push({
+                pathname: '/payments/receive',
+                params: { customerId: item.id },
+              })
+            }
           />
         )}
         ListEmptyComponent={

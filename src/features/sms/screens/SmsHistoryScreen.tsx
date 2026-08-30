@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   listContent: { padding: theme.spacing.md, gap: 10, paddingBottom: 32 },
   card: {
     backgroundColor: colors.surface, borderRadius: theme.radius.card,
-    borderWidth: 1, borderColor: colors.border, overflow: 'hidden', ...theme.shadows.card,
+    borderWidth: 1, borderColor: colors.border, ...theme.shadows.card,
   },
   cardTop: { flexDirection: 'row', padding: 14, gap: 12, borderBottomWidth: 1, borderBottomColor: colors.background },
   iconWrap: {

@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md, paddingVertical: 10,
     backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  listContent: { padding: theme.spacing.md, gap: 10, paddingBottom: 100 },
+  listContent: { padding: theme.spacing.md, gap: 10, paddingBottom: 24 },
   card: {
     backgroundColor: colors.surface, borderRadius: theme.radius.card,
     borderWidth: 1, borderColor: colors.border, padding: 14,

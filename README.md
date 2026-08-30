@@ -45,8 +45,8 @@ cp .env.example .env
 \`\`\`
 
 Update \`.env\` with your backend URL:
-\`\`\`
-EXPO_PUBLIC_API_URL=http://localhost:5000/api
+\`\`\`env
+EXPO_PUBLIC_API_URL=https://logistic-backend-beta.vercel.app/api/v1
 \`\`\`
 
 ### 3. Run the App

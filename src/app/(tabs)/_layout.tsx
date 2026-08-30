@@ -2,6 +2,7 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 
@@ -34,12 +35,16 @@ const TabIcon = ({ name, label, focused, badge }: TabIconProps) => (
 
 // ─── Layout ────────────────────────────────────────────────────────────────────
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar
+        ],
         // Ensure tab bar is above Android nav bar
         tabBarHideOnKeyboard: true,
       }}
@@ -92,8 +97,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    height: Platform.OS === 'ios' ? 82 : 66,
-    paddingBottom: Platform.OS === 'ios' ? 22 : 8,
     paddingTop: 6,
     // Subtle top shadow
     shadowColor: colors.navy,

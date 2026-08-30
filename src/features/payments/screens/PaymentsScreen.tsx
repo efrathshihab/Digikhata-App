@@ -17,15 +17,17 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 
-const PAYMENTS = [
-  { id: 'p1', customer: 'রহিম উদ্দিন', invoice: 'INV-০০১৫', amount: 9500, method: 'নগদ', date: '২৭ আগ ২০২৬', status: 'completed' as const },
-  { id: 'p2', customer: 'করিম মিয়া', invoice: 'INV-০০১৪', amount: 5000, method: 'bKash', date: '২৬ আগ ২০২৬', status: 'completed' as const },
-  { id: 'p3', customer: 'মোঃ সালাউদ্দিন', invoice: 'INV-০০১৩', amount: 12000, method: 'Nagad', date: '২৫ আগ ২০২৬', status: 'completed' as const },
-  { id: 'p4', customer: 'আবু সাঈদ', invoice: 'INV-০০০৮', amount: 15000, method: 'ব্যাংক', date: '২৪ আগ ২০২৬', status: 'completed' as const },
-  { id: 'p5', customer: 'সুমাইয়া বেগম', invoice: 'INV-০০১২', amount: 8000, method: 'নগদ', date: '২৩ আগ ২০২৬', status: 'completed' as const },
-];
+import { useQuery } from '@tanstack/react-query';
+import { paymentsApi, PaymentListItem } from '@/api/payments.api';
+import { dashboardApi } from '@/api/dashboard.api';
+import { RefreshControl } from 'react-native';
 
 const METHOD_ICONS: Record<string, string> = {
+  'CASH': 'dollar-sign',
+  'MOBILE_BANKING': 'smartphone',
+  'BANK_TRANSFER': 'credit-card',
+  'CHEQUE': 'file-text',
+  'OTHER': 'more-horizontal',
   'নগদ': 'dollar-sign',
   'bKash': 'smartphone',
   'Nagad': 'smartphone',
@@ -33,10 +35,31 @@ const METHOD_ICONS: Record<string, string> = {
   'অন্যান্য': 'more-horizontal',
 };
 
+const METHOD_LABELS: Record<string, string> = {
+  'CASH': 'নগদ',
+  'MOBILE_BANKING': 'মোবাইল ব্যাংকিং',
+  'BANK_TRANSFER': 'ব্যাংক',
+  'CHEQUE': 'চেক',
+  'OTHER': 'অন্যান্য',
+};
+
 export const PaymentsScreen = () => {
   const router = useRouter();
-  const todayTotal = PAYMENTS.slice(0, 2).reduce((s, p) => s + p.amount, 0);
-  const weekTotal = PAYMENTS.reduce((s, p) => s + p.amount, 0);
+
+  const { data: paymentsData, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['payments'],
+    queryFn: () => paymentsApi.getPayments({ limit: 100 }),
+  });
+
+  const { data: summary } = useQuery({
+    queryKey: ['dashboardSummary'],
+    queryFn: dashboardApi.getSummary,
+  });
+
+  const payments = paymentsData?.items || [];
+  const todayCollections = Number(summary?.todayCollections || 0);
+  const totalDue = Number(summary?.totalDue || 0);
+  const totalPaymentsAmount = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -54,6 +77,14 @@ export const PaymentsScreen = () => {
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         {/* Summary cards */}
         <View style={styles.summaryRow}>
@@ -63,16 +94,16 @@ export const PaymentsScreen = () => {
             </View>
             <Text style={styles.sumLabel}>আজকের আদায়</Text>
             <Text style={[styles.sumValue, { color: colors.success }]}>
-              ৳ {todayTotal.toLocaleString()}
+              ৳ {todayCollections.toLocaleString('en-IN')}
             </Text>
           </View>
           <View style={styles.summaryCard}>
             <View style={[styles.sumIcon, { backgroundColor: colors.primarySoft }]}>
               <Feather name="calendar" size={16} color={colors.primary} />
             </View>
-            <Text style={styles.sumLabel}>এই সপ্তাহ</Text>
+            <Text style={styles.sumLabel}>মোট আদায়</Text>
             <Text style={[styles.sumValue, { color: colors.primary }]}>
-              ৳ {weekTotal.toLocaleString()}
+              ৳ {totalPaymentsAmount.toLocaleString('en-IN')}
             </Text>
           </View>
           <View style={styles.summaryCard}>
@@ -80,39 +111,49 @@ export const PaymentsScreen = () => {
               <Feather name="alert-circle" size={16} color={colors.danger} />
             </View>
             <Text style={styles.sumLabel}>মোট বকেয়া</Text>
-            <Text style={[styles.sumValue, { color: colors.danger }]}>৳ ১,২৪,৭৫০</Text>
+            <Text style={[styles.sumValue, { color: colors.danger }]}>৳ {totalDue.toLocaleString('en-IN')}</Text>
           </View>
         </View>
 
         {/* Recent payments */}
-        <SectionHeader title="সাম্প্রতিক পেমেন্ট" />
+        <SectionHeader title="পেমেন্টের তালিকা" />
 
-        {PAYMENTS.map((payment) => (
-          <View key={payment.id} style={styles.paymentCard}>
-            <View style={[styles.payIcon, { backgroundColor: colors.successSoft }]}>
-              <Feather
-                name={METHOD_ICONS[payment.method] as any || 'dollar-sign'}
-                size={16}
-                color={colors.success}
-              />
+        {payments.map((payment) => {
+          const methodKey = payment.method || 'CASH';
+          const methodLabel = METHOD_LABELS[methodKey] || payment.method;
+          const methodIcon = METHOD_ICONS[methodKey] || 'dollar-sign';
+
+          return (
+            <View key={payment.id} style={styles.paymentCard}>
+              <View style={[styles.payIcon, { backgroundColor: colors.successSoft }]}>
+                <Feather
+                  name={methodIcon as any}
+                  size={16}
+                  color={colors.success}
+                />
+              </View>
+              <View style={styles.payInfo}>
+                <Text style={styles.payCustomer}>{payment.customer?.name || 'অজানা গ্রাহক'}</Text>
+                <Text style={styles.payMeta}>{methodLabel} {payment.reference ? `· ${payment.reference}` : ''}</Text>
+                <Text style={styles.payDate}>{new Date(payment.paymentDate).toLocaleDateString('bn-BD')}</Text>
+              </View>
+              <View style={styles.payRight}>
+                <Text style={styles.payAmount}>৳ {Number(payment.amount).toLocaleString('en-IN')}</Text>
+                <StatusBadge label={payment.status === 'COMPLETED' ? 'সম্পন্ন' : payment.status === 'REVERSED' ? 'বাতিল' : 'সম্পন্ন'} variant={payment.status === 'REVERSED' ? 'danger' : 'success'} />
+              </View>
             </View>
-            <View style={styles.payInfo}>
-              <Text style={styles.payCustomer}>{payment.customer}</Text>
-              <Text style={styles.payMeta}>{payment.invoice} · {payment.method}</Text>
-              <Text style={styles.payDate}>{payment.date}</Text>
-            </View>
-            <View style={styles.payRight}>
-              <Text style={styles.payAmount}>৳ {payment.amount.toLocaleString()}</Text>
-              <StatusBadge label="সম্পন্ন" variant="success" />
-            </View>
-          </View>
-        ))}
+          );
+        })}
+
+        {payments.length === 0 && (
+          <Text style={{ textAlign: 'center', padding: 24, color: colors.textSecondary }}>কোনো পেমেন্ট পাওয়া যায়নি</Text>
+        )}
 
         <View style={{ height: 80 }} />
       </ScrollView>
 
       <FloatingActionButton
-        onPress={() => {}}
+        onPress={() => router.push('/payments/receive')}
         label="পেমেন্ট নিন"
       />
     </SafeAreaView>

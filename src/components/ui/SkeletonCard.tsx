@@ -21,7 +21,7 @@ const SkeletonLine = ({
   style,
   opacity,
 }: {
-  width?: string | number;
+  width?: any;
   height?: number;
   style?: ViewStyle;
   opacity: Animated.Value;

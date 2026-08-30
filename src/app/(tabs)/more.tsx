@@ -14,6 +14,10 @@ import { Feather } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
 
+import { useAuthStore } from '@/stores/authStore';
+import { authApi } from '@/api/auth.api';
+import { tokenStorage } from '@/storage/tokenStorage';
+
 interface MenuItemProps {
   icon: string;
   label: string;
@@ -79,6 +83,7 @@ const MenuGroup = ({ title, children }: MenuGroupProps) => (
 
 export default function MoreRoute() {
   const router = useRouter();
+  const { user, logout } = useAuthStore();
 
   const handleLogout = () => {
     Alert.alert(
@@ -89,7 +94,11 @@ export default function MoreRoute() {
         {
           text: 'লগআউট',
           style: 'destructive',
-          onPress: () => router.replace('/(auth)/login'),
+          onPress: async () => {
+            await authApi.logout();
+            logout();
+            router.replace('/(auth)/login');
+          },
         },
       ]
     );
@@ -110,14 +119,18 @@ export default function MoreRoute() {
         showsVerticalScrollIndicator={false}
       >
         {/* Profile card */}
-        <TouchableOpacity style={styles.profileCard} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.profileCard}
+          activeOpacity={0.8}
+          onPress={() => router.push('/settings')}
+        >
           <View style={styles.profileAvatar}>
-            <Text style={styles.profileAvatarText}>আ</Text>
+            <Text style={styles.profileAvatarText}>{user?.name?.charAt(0) || 'আ'}</Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>আহমেদ সাকিব</Text>
-            <Text style={styles.profileBiz}>মেসার্স আহমেদ ট্রেডার্স</Text>
-            <Text style={styles.profilePhone}>+880 1711-223344</Text>
+            <Text style={styles.profileName}>{user?.name || 'ব্যবহারকারী'}</Text>
+            <Text style={styles.profileBiz}>{user?.shopId ? 'আপনার দোকান' : 'মেসার্স আহমেদ ট্রেডার্স'}</Text>
+            <Text style={styles.profilePhone}>{user?.email || '+880 1711-223344'}</Text>
           </View>
           <View style={styles.profileEdit}>
             <Feather name="edit-2" size={16} color={colors.primary} />
@@ -147,7 +160,7 @@ export default function MoreRoute() {
           <MenuItem
             icon="bar-chart-2"
             label="রিপোর্ট"
-            description="বিক্রয়, আদায় ও বকেয়ার রিপোর্ট"
+            description="বিক্রয়, আদায় ও বকেয়ার রিপোর্ট"
             iconBg={colors.primarySoft}
             iconColor={colors.primary}
             onPress={() => router.push('/reports')}
@@ -173,7 +186,7 @@ export default function MoreRoute() {
             description="ব্যক্তিগত তথ্য সম্পাদনা"
             iconBg={colors.primarySoft}
             iconColor={colors.primary}
-            onPress={() => {}}
+            onPress={() => router.push('/settings')}
             divider
           />
           <MenuItem
@@ -181,7 +194,7 @@ export default function MoreRoute() {
             label="পাসওয়ার্ড ও নিরাপত্তা"
             iconBg={colors.warningSoft}
             iconColor={colors.warning}
-            onPress={() => {}}
+            onPress={() => router.push('/security')}
             divider
           />
           <MenuItem
@@ -190,7 +203,7 @@ export default function MoreRoute() {
             description="পেমেন্ট ও বকেয়া অনুস্মারক"
             iconBg={colors.infoSoft}
             iconColor={colors.info}
-            onPress={() => {}}
+            onPress={() => router.push('/notifications')}
           />
         </MenuGroup>
 
@@ -231,7 +244,7 @@ export default function MoreRoute() {
             label="সাহায্য ও সহায়তা"
             iconBg={colors.successSoft}
             iconColor={colors.success}
-            onPress={() => {}}
+            onPress={() => router.push('/help')}
           />
         </MenuGroup>
 

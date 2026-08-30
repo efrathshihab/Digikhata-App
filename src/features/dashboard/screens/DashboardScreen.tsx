@@ -8,28 +8,19 @@ import {
   RefreshControl,
   StatusBar,
   Platform,
+  Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/colors';
 import { theme } from '@/constants/theme';
-import { CustomerCard, Customer } from '@/components/ui/CustomerCard';
+import { CustomerCard } from '@/components/ui/CustomerCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-const MOCK_CUSTOMERS: Customer[] = [
-  { id: '1', serialNo: '০০১', name: 'রহিম উদ্দিন', phone: '01711-223344', village: 'মিরপুর, ঢাকা', totalDue: 15500, lastTransactionDate: '২৭ আগ ২০২৬', status: 'overdue' },
-  { id: '2', serialNo: '০০২', name: 'করিম মিয়া', phone: '01812-334455', village: 'মতিঝিল, ঢাকা', totalDue: 8200, lastTransactionDate: '২৬ আগ ২০২৬', status: 'overdue' },
-  { id: '3', serialNo: '০০৩', name: 'মোঃ সালাউদ্দিন', phone: '01912-445566', village: 'নারায়ণগঞ্জ', totalDue: 0, lastTransactionDate: '২৫ আগ ২০২৬', status: 'active' },
-];
-
-const MOCK_TRANSACTIONS = [
-  { id: 't1', type: 'sale', customer: 'রহিম উদ্দিন', desc: 'INV-০০১৫ · ফ্লাই অ্যাশ সিমেন্ট', amount: 25000, time: '২ ঘণ্টা আগে', positive: false },
-  { id: 't2', type: 'payment', customer: 'করিম মিয়া', desc: 'PMT-০০৩২ · নগদ', amount: 5000, time: '৪ ঘণ্টা আগে', positive: true },
-  { id: 't3', type: 'sale', customer: 'মোঃ সালাউদ্দিন', desc: 'INV-০০১৩ · সিমেন্ট ব্লক', amount: 12000, time: 'গতকাল', positive: false },
-];
+import { useQuery } from '@tanstack/react-query';
+import { dashboardApi } from '@/api/dashboard.api';
+import { useAuthStore } from '@/stores/authStore';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getGreeting(): string {
@@ -92,69 +83,86 @@ interface QAProps {
   iconColor?: string;
 }
 
-const QuickAction = ({ icon, label, onPress, primary, iconBg, iconColor }: QAProps) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.7}
-    style={[styles.qa, primary && styles.qaPrimary]}
-  >
-    <View
-      style={[
-        styles.qaIcon,
-        primary
-          ? styles.qaIconPrimary
-          : { backgroundColor: iconBg ?? colors.primarySoft },
-      ]}
+const QuickAction = ({ icon, label, onPress, primary, iconBg, iconColor }: QAProps) => {
+  const lastPressRef = React.useRef(0);
+
+  const handlePress = () => {
+    const now = Date.now();
+    if (now - lastPressRef.current < 800) return;
+    lastPressRef.current = now;
+    onPress();
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      activeOpacity={0.7}
+      style={[styles.qa, primary && styles.qaPrimary]}
     >
-      <Feather
-        name={icon as any}
-        size={20}
-        color={primary ? colors.surface : (iconColor ?? colors.primary)}
-      />
-    </View>
-    <Text style={[styles.qaLabel, primary && styles.qaLabelPrimary]} numberOfLines={2}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
+      <View
+        style={[
+          styles.qaIcon,
+          primary
+            ? styles.qaIconPrimary
+            : { backgroundColor: iconBg ?? colors.primarySoft },
+        ]}
+      >
+        <Feather
+          name={icon as any}
+          size={20}
+          color={primary ? colors.surface : (iconColor ?? colors.primary)}
+        />
+      </View>
+      <Text style={[styles.qaLabel, primary && styles.qaLabelPrimary]} numberOfLines={2}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
 // ─── Activity Row ─────────────────────────────────────────────────────────────
-const ActivityRow = ({ tx }: { tx: typeof MOCK_TRANSACTIONS[0] }) => (
+const ActivityRow = ({ type, customerName, amount, time, desc }: { type: 'payment' | 'purchase'; customerName: string; amount: string; time: string; desc: string }) => (
   <View style={styles.actRow}>
     <View
       style={[
         styles.actIcon,
-        { backgroundColor: tx.type === 'payment' ? colors.successSoft : colors.primarySoft },
+        { backgroundColor: type === 'payment' ? colors.successSoft : colors.primarySoft },
       ]}
     >
       <Feather
-        name={tx.type === 'payment' ? 'credit-card' : 'file-text'}
+        name={type === 'payment' ? 'credit-card' : 'file-text'}
         size={15}
-        color={tx.type === 'payment' ? colors.success : colors.primary}
+        color={type === 'payment' ? colors.success : colors.primary}
       />
     </View>
     <View style={styles.actInfo}>
-      <Text style={styles.actCustomer}>{tx.customer}</Text>
-      <Text style={styles.actDesc} numberOfLines={1}>{tx.desc}</Text>
+      <Text style={styles.actCustomer}>{customerName}</Text>
+      <Text style={styles.actDesc} numberOfLines={1}>{desc}</Text>
     </View>
     <View style={styles.actRight}>
-      <Text style={[styles.actAmount, { color: tx.positive ? colors.success : colors.textPrimary }]}>
-        {tx.positive ? '+' : '−'}৳ {tx.amount.toLocaleString()}
+      <Text style={[styles.actAmount, { color: type === 'payment' ? colors.success : colors.textPrimary }]}>
+        {type === 'payment' ? '+' : '−'}৳ {Number(amount).toLocaleString('en-IN')}
       </Text>
-      <Text style={styles.actTime}>{tx.time}</Text>
+      <Text style={styles.actTime}>{time}</Text>
     </View>
   </View>
 );
 
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export const DashboardScreen = () => {
   const router = useRouter();
-  const [refreshing, setRefreshing] = useState(false);
+  const { user } = useAuthStore();
+  const { data: summary, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['dashboardSummary'],
+    queryFn: dashboardApi.getSummary,
+  });
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1400);
-  };
+  const totalDue = Number(summary?.totalDue || 0);
+  const totalCustomers = summary?.activeCustomers || 0;
+  const todaySales = Number(summary?.todaySales || 0);
+  const monthSales = Number(summary?.monthSales || 0);
+  const todayCollections = Number(summary?.todayCollections || 0);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -162,12 +170,15 @@ export const DashboardScreen = () => {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 20 }
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+            refreshing={isRefetching}
+            onRefresh={refetch}
             tintColor={colors.surface}
             colors={[colors.primary]}
           />
@@ -188,39 +199,48 @@ export const DashboardScreen = () => {
               </View>
               <View>
                 <Text style={styles.greeting}>
-                  {getGreeting()}, আহমেদ
+                  {getGreeting()}, {user?.name || 'ব্যবহারকারী'}
                 </Text>
                 <Text style={styles.heroDate}>{formatDate()}</Text>
               </View>
             </View>
             <View style={styles.heroRight}>
-              <TouchableOpacity style={styles.heroBell} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={styles.heroBell}
+                activeOpacity={0.7}
+                onPress={() => router.push('/notifications')}
+              >
                 <Feather name="bell" size={19} color={colors.surface} />
                 <View style={styles.heroBellDot} />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.heroAvatar} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={styles.heroAvatar}
+                activeOpacity={0.7}
+                onPress={() => router.push('/settings')}
+              >
                 <Text style={styles.heroAvatarText}>আ</Text>
               </TouchableOpacity>
             </View>
           </View>
 
+
           {/* Business name */}
-          <Text style={styles.bizName}>মেসার্স আহমেদ ট্রেডার্স</Text>
+          <Text style={styles.bizName}>{user?.shopId ? 'আপনার দোকান' : 'লোড হচ্ছে...'}</Text>
 
           {/* Hero KPI row */}
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>৳ ১,২৪,৭৫০</Text>
+              <Text style={styles.heroStatValue}>৳ {totalDue.toLocaleString('en-IN')}</Text>
               <Text style={styles.heroStatLabel}>মোট বকেয়া</Text>
             </View>
             <View style={styles.heroStatDivider} />
             <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>৳ ৩৮,৫০০</Text>
+              <Text style={styles.heroStatValue}>৳ {todaySales.toLocaleString('en-IN')}</Text>
               <Text style={styles.heroStatLabel}>আজকের বিক্রয়</Text>
             </View>
             <View style={styles.heroStatDivider} />
             <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>২৪৭</Text>
+              <Text style={styles.heroStatValue}>{totalCustomers.toLocaleString('en-IN')}</Text>
               <Text style={styles.heroStatLabel}>মোট গ্রাহক</Text>
             </View>
           </View>
@@ -232,39 +252,31 @@ export const DashboardScreen = () => {
           <View style={styles.kpiGrid}>
             <KPICard
               label="মোট গ্রাহক"
-              value="২৪৭"
+              value={totalCustomers.toLocaleString('en-IN')}
               icon="users"
               iconBg={colors.primarySoft}
               iconColor={colors.primary}
-              trend="১২% এই মাসে"
-              trendUp
             />
             <KPICard
               label="আজকের বিক্রয়"
-              value="৳ ৩৮,৫০০"
+              value={`৳ ${todaySales.toLocaleString('en-IN')}`}
               icon="trending-up"
               iconBg={colors.successSoft}
               iconColor={colors.success}
-              trend="৮% বৃদ্ধি"
-              trendUp
             />
             <KPICard
               label="মোট বকেয়া"
-              value="৳ ১,২৪,৭৫০"
+              value={`৳ ${totalDue.toLocaleString('en-IN')}`}
               icon="alert-circle"
               iconBg={colors.dangerSoft}
               iconColor={colors.danger}
-              trend="৫ গ্রাহক"
-              trendUp={false}
             />
             <KPICard
-              label="মোট আদায়"
-              value="৳ ৮৫,২০০"
+              label="আজকের আদায়"
+              value={`৳ ${todayCollections.toLocaleString('en-IN')}`}
               icon="check-circle"
               iconBg={colors.warningSoft}
               iconColor={colors.warning}
-              trend="এই মাসে"
-              trendUp
             />
           </View>
 
@@ -318,29 +330,38 @@ export const DashboardScreen = () => {
             <Feather name="chevron-right" size={16} color={colors.danger} />
           </TouchableOpacity>
 
-          {/* ─── Recent Customers ────────────────────────────────────── */}
-          <SectionHeader
-            title="সাম্প্রতিক গ্রাহক"
-            actionLabel="সব দেখুন"
-            onAction={() => router.push('/(tabs)/customers')}
-          />
-          {MOCK_CUSTOMERS.map((c) => (
-            <CustomerCard
-              key={c.id}
-              customer={c}
-              onPress={() => router.push(`/customers/${c.id}`)}
-            />
-          ))}
+
 
           {/* ─── Recent Activity ─────────────────────────────────────── */}
           <SectionHeader title="সাম্প্রতিক লেনদেন" />
           <View style={styles.activityCard}>
-            {MOCK_TRANSACTIONS.map((tx, i) => (
-              <React.Fragment key={tx.id}>
-                <ActivityRow tx={tx} />
-                {i < MOCK_TRANSACTIONS.length - 1 && <View style={styles.actDivider} />}
+            {summary?.recentPayments.slice(0, 3).map((p, i) => (
+              <React.Fragment key={p.id}>
+                <ActivityRow 
+                  type="payment" 
+                  customerName={p.customer.name} 
+                  amount={p.amount} 
+                  time={new Date(p.paymentDate).toLocaleDateString('bn-BD')} 
+                  desc={`পেমেন্ট গ্রহণ (${p.method})`}
+                />
+                <View style={styles.actDivider} />
               </React.Fragment>
             ))}
+            {summary?.recentPurchases.slice(0, 3).map((p, i) => (
+              <React.Fragment key={p.id}>
+                <ActivityRow 
+                  type="purchase" 
+                  customerName={p.customer.name} 
+                  amount={p.netAmount} 
+                  time={new Date(p.purchaseDate).toLocaleDateString('bn-BD')} 
+                  desc={p.invoice ? `ইনভয়েস #${p.invoice.invoiceNumber}` : 'পণ্য বিক্রয়'}
+                />
+                {i < Math.min(2, summary.recentPurchases.length - 1) && <View style={styles.actDivider} />}
+              </React.Fragment>
+            ))}
+            {(!summary?.recentPayments?.length && !summary?.recentPurchases?.length) && (
+              <Text style={{ padding: 16, textAlign: 'center', color: colors.textSecondary }}>কোনো লেনদেন পাওয়া যায়নি</Text>
+            )}
           </View>
 
           <View style={styles.bottomSpacer} />
@@ -372,7 +393,7 @@ const styles = StyleSheet.create({
   logoMark: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radius.button,
     backgroundColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -383,7 +404,7 @@ const styles = StyleSheet.create({
   heroBell: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radius.button,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -444,11 +465,12 @@ const styles = StyleSheet.create({
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 10,
     marginBottom: 20,
   },
   kpiCard: {
-    width: '47.5%',
+    width: '48.5%',
     backgroundColor: colors.surface,
     borderRadius: theme.radius.card,
     padding: 14,
@@ -459,7 +481,7 @@ const styles = StyleSheet.create({
   kpiIcon: {
     width: 38,
     height: 38,
-    borderRadius: 10,
+    borderRadius: theme.radius.button,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -478,11 +500,14 @@ const styles = StyleSheet.create({
   qa: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: theme.radius.card,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 96,
     ...theme.shadows.card,
     gap: 6,
   },
@@ -493,7 +518,7 @@ const styles = StyleSheet.create({
   qaIcon: {
     width: 42,
     height: 42,
-    borderRadius: 12,
+    borderRadius: theme.radius.button,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -505,7 +530,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     textAlign: 'center',
-    lineHeight: 14,
+    lineHeight: 15, // Better line height for Bengali characters
   },
   qaLabelPrimary: { color: colors.surface },
 
@@ -525,7 +550,7 @@ const styles = StyleSheet.create({
   dueAlertIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: theme.radius.button,
     backgroundColor: 'rgba(239,68,68,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -539,7 +564,6 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
     marginBottom: 8,
     ...theme.shadows.card,
   },
@@ -552,7 +576,7 @@ const styles = StyleSheet.create({
   actIcon: {
     width: 38,
     height: 38,
-    borderRadius: 10,
+    borderRadius: theme.radius.button,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -564,5 +588,5 @@ const styles = StyleSheet.create({
   actTime: { fontSize: 11, color: colors.textMuted },
   actDivider: { height: 1, backgroundColor: colors.border, marginHorizontal: 13 },
 
-  bottomSpacer: { height: 80 },
+  bottomSpacer: { height: 0 },
 });
