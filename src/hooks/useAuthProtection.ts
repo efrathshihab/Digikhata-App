@@ -51,7 +51,7 @@ export function useAuthProtection() {
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
       // Redirect to dashboard if authenticated and trying to access auth routes
-      router.replace('/(tabs)/dashboard');
+      router.replace('/(tabs)');
     }
   }, [isAuthenticated, isLoading, segments]);
 }

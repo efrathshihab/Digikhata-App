@@ -49,7 +49,7 @@ export const CustomersScreen = () => {
   const filtered = data?.items || [];
 
   const totalDue = filtered.reduce((s, c) => s + Number(c.currentBalance), 0);
-  const overdueCount = filtered.filter((c) => Number(c.currentBalance) < 0).length;
+  const overdueCount = filtered.filter((c) => Number(c.currentBalance) > 0).length;
   const inactiveCount = filtered.filter((c) => c.status === 'INACTIVE').length;
 
   return (

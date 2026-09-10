@@ -43,14 +43,12 @@ export interface PaymentListItem {
 
 export interface PaymentListResponse {
   success: boolean;
-  data: {
-    items: PaymentListItem[];
-    meta: {
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    };
+  data: PaymentListItem[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
   };
 }
 
@@ -65,9 +63,11 @@ export const paymentsApi = {
     return response.data.data;
   },
 
-  getPayments: async (params?: { page?: number; limit?: number; search?: string; customerId?: string }): Promise<PaymentListResponse['data']> => {
+  getPayments: async (params?: { page?: number; limit?: number; customerId?: string; status?: 'CONFIRMED' | 'REVERSED'; from?: string; to?: string }): Promise<{ items: PaymentListItem[]; meta: PaymentListResponse['meta'] }> => {
     const response = await apiClient.get<PaymentListResponse>('/payments', { params });
-    return response.data.data;
+    const items = Array.isArray(response.data.data) ? response.data.data : ((response.data.data as any)?.items || []);
+    const meta = response.data.meta || (response.data.data as any)?.meta || { total: items.length, page: 1, limit: 20, pages: 1 };
+    return { items, meta };
   },
 
   reversePayment: async (id: string, reason: string, idempotencyKey?: string): Promise<PaymentResponse['data']> => {

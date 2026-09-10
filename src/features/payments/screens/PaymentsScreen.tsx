@@ -20,6 +20,7 @@ import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { useQuery } from '@tanstack/react-query';
 import { paymentsApi, PaymentListItem } from '@/api/payments.api';
 import { dashboardApi } from '@/api/dashboard.api';
+import { pdfService } from '@/services/pdfService';
 import { RefreshControl } from 'react-native';
 
 const METHOD_ICONS: Record<string, string> = {
@@ -137,10 +138,13 @@ export const PaymentsScreen = () => {
                 <Text style={styles.payMeta}>{methodLabel} {payment.reference ? `· ${payment.reference}` : ''}</Text>
                 <Text style={styles.payDate}>{new Date(payment.paymentDate).toLocaleDateString('bn-BD')}</Text>
               </View>
-              <View style={styles.payRight}>
+              <TouchableOpacity style={styles.payRight} onPress={() => pdfService.openPaymentReceiptPdf(payment.id)} activeOpacity={0.7}>
                 <Text style={styles.payAmount}>৳ {Number(payment.amount).toLocaleString('en-IN')}</Text>
-                <StatusBadge label={payment.status === 'COMPLETED' ? 'সম্পন্ন' : payment.status === 'REVERSED' ? 'বাতিল' : 'সম্পন্ন'} variant={payment.status === 'REVERSED' ? 'danger' : 'success'} />
-              </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                  <StatusBadge label={payment.status === 'COMPLETED' ? 'সম্পন্ন' : payment.status === 'REVERSED' ? 'বাতিল' : 'সম্পন্ন'} variant={payment.status === 'REVERSED' ? 'danger' : 'success'} />
+                  <Feather name="file-text" size={14} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
             </View>
           );
         })}

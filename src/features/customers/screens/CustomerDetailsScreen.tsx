@@ -64,7 +64,7 @@ export const CustomerDetailsScreen = () => {
   });
 
   const handleEditPress = () => {
-    Alert.alert('সম্পাদনা', 'গ্রাহকের তথ্য সম্পাদনা ফিচারটি শীঘ্রই আসছে।');
+    router.push(`/customers/${id}/edit` as any);
   };
 
   if (isLoading || !customer) {
