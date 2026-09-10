@@ -90,7 +90,7 @@ export const LoginForm = () => {
       console.log('[Auth] Profile retrieved successfully. Redirecting...');
       setUser(profile.data);
 
-      router.replace('/(tabs)/dashboard');
+      router.replace('/(tabs)');
     } catch (e: any) {
       console.log('[Auth] Login request failed:', {
         status: e.response?.status,

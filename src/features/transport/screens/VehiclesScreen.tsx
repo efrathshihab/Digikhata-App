@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -15,34 +16,18 @@ import { theme } from '@/constants/theme';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { FilterBar } from '@/components/ui/FilterChip';
+import { useQuery } from '@tanstack/react-query';
+import { deliveriesApi, Vehicle as ApiVehicle } from '@/api/deliveries.api';
 
-interface Vehicle {
-  id: string;
-  vehicleNo: string;
-  type: string;
-  driverName: string;
-  status: 'active' | 'maintenance' | 'inactive';
-}
-
-const VEHICLES: Vehicle[] = [
-  { id: '1', vehicleNo: 'ঢাকা-মেট্রো-১২৩৪', type: 'ট্রাক', driverName: 'আলী হোসেন', status: 'active' },
-  { id: '2', vehicleNo: 'ঢাকা-মেট্রো-৫৬৭৮', type: 'পিকআপ', driverName: 'করিম ড্রাইভার', status: 'active' },
-  { id: '3', vehicleNo: 'নারা-১১১১', type: 'ট্রাক', driverName: 'রহিম ড্রাইভার', status: 'maintenance' },
-  { id: '4', vehicleNo: 'গাজী-২২২২', type: 'কভার্ড ভ্যান', driverName: 'জামাল উদ্দিন', status: 'inactive' },
-];
-
-const statusCfg = {
-  active: { label: 'সক্রিয়', variant: 'success' as const },
-  maintenance: { label: 'মেইনটেন্যান্স', variant: 'warning' as const },
-  inactive: { label: 'নিষ্ক্রিয়', variant: 'danger' as const },
+const statusCfg: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' }> = {
+  AVAILABLE: { label: 'উপলব্ধ', variant: 'success' },
+  IN_USE: { label: 'কাজে আছে', variant: 'info' },
+  MAINTENANCE: { label: 'মেইনটেন্যান্স', variant: 'warning' },
+  INACTIVE: { label: 'নিষ্ক্রিয়', variant: 'danger' },
 };
 
-const FILTERS = ['সব', 'সক্রিয়', 'মেইনটেন্যান্স', 'নিষ্ক্রিয়'] as const;
-type FilterKey = typeof FILTERS[number];
-
-const VehicleCard = ({ vehicle }: { vehicle: Vehicle }) => {
-  const cfg = statusCfg[vehicle.status];
+const VehicleCard = ({ vehicle }: { vehicle: ApiVehicle }) => {
+  const cfg = statusCfg[vehicle.status] || { label: vehicle.status, variant: 'info' };
   return (
     <View style={styles.card}>
       <View style={styles.iconWrap}>
@@ -50,14 +35,10 @@ const VehicleCard = ({ vehicle }: { vehicle: Vehicle }) => {
       </View>
       <View style={styles.info}>
         <View style={styles.nameRow}>
-          <Text style={styles.vehicleNo}>{vehicle.vehicleNo}</Text>
+          <Text style={styles.vehicleNo}>{vehicle.registrationNumber}</Text>
           <StatusBadge label={cfg.label} variant={cfg.variant} />
         </View>
-        <Text style={styles.type}>{vehicle.type}</Text>
-        <View style={styles.driverRow}>
-          <Feather name="user" size={14} color={colors.textMuted} />
-          <Text style={styles.driverName}>{vehicle.driverName || 'চালক নির্ধারিত নেই'}</Text>
-        </View>
+        <Text style={styles.type}>ধরন: {vehicle.type} {vehicle.capacity ? `· ধারণক্ষমতা: ${vehicle.capacity}` : ''}</Text>
       </View>
     </View>
   );
@@ -66,103 +47,130 @@ const VehicleCard = ({ vehicle }: { vehicle: Vehicle }) => {
 export const VehiclesScreen = () => {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('সব');
 
-  const filtered = VEHICLES.filter((v) => {
-    const matchSearch = !search.trim() || v.vehicleNo.includes(search) || v.driverName.includes(search);
-    const matchFilter = filter === 'সব' || statusCfg[v.status].label === filter;
-    return matchSearch && matchFilter;
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['vehicles'],
+    queryFn: () => deliveriesApi.getVehicles({ limit: 100 }),
   });
+
+  const vehiclesList = data?.items || [];
+
+  const filtered = vehiclesList.filter(
+    (v) =>
+      !search.trim() ||
+      v.registrationNumber.toLowerCase().includes(search.toLowerCase()) ||
+      v.type.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>যানবাহন তালিকা</Text>
-        <View style={styles.backBtn} />
-      </View>
-
-      <View style={styles.summaryStrip}>
-        <View style={styles.sumItem}>
-          <Text style={styles.sumValue}>{VEHICLES.length}</Text>
-          <Text style={styles.sumLabel}>মোট যান</Text>
-        </View>
-        <View style={styles.sumDivider} />
-        <View style={styles.sumItem}>
-          <Text style={[styles.sumValue, { color: colors.success }]}>
-            {VEHICLES.filter((v) => v.status === 'active').length}
-          </Text>
-          <Text style={styles.sumLabel}>সক্রিয়</Text>
-        </View>
-        <View style={styles.sumDivider} />
-        <View style={styles.sumItem}>
-          <Text style={[styles.sumValue, { color: colors.warning }]}>
-            {VEHICLES.filter((v) => v.status === 'maintenance').length}
-          </Text>
-          <Text style={styles.sumLabel}>মেইনটেন্যান্স</Text>
-        </View>
+        <View style={{ width: 36 }} />
       </View>
 
       <View style={styles.searchWrap}>
-        <SearchInput value={search} onChangeText={setSearch} placeholder="গাড়ি নম্বর বা চালকের নাম" />
+        <SearchInput value={search} onChangeText={setSearch} placeholder="রেজিস্ট্রেশন নম্বর বা ধরন" />
       </View>
-
-      <FilterBar options={[...FILTERS]} active={filter} onSelect={setFilter} />
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefetching} onRefresh={refetch} colors={[colors.primary]} />
+        }
+        ListEmptyComponent={
+          !isLoading ? (
+            <EmptyState
+              icon="truck"
+              title="কোনো যানবাহন পাওয়া যায়নি"
+              description="যানবাহন তালিকায় তথ্য পাওয়া যায়নি।"
+            />
+          ) : null
+        }
         renderItem={({ item }) => <VehicleCard vehicle={item} />}
-        ListEmptyComponent={<EmptyState icon="truck" title="কোনো যানবাহন পাওয়া যায়নি" />}
       />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: theme.spacing.md, paddingVertical: 12,
-    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: colors.background,
-    alignItems: 'center', justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.textPrimary },
-  summaryStrip: {
-    flexDirection: 'row', backgroundColor: colors.surface,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
-  sumItem: { flex: 1, alignItems: 'center' },
-  sumValue: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
-  sumLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
-  sumDivider: { width: 1, backgroundColor: colors.border, marginVertical: 4 },
   searchWrap: {
-    paddingHorizontal: theme.spacing.md, paddingVertical: 10,
-    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.md,
   },
-  listContent: { padding: theme.spacing.md, gap: 10, paddingBottom: 32 },
+  list: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl,
+    gap: 12,
+  },
   card: {
-    backgroundColor: colors.surface, borderRadius: theme.radius.card,
-    borderWidth: 1, borderColor: colors.border, padding: 14,
-    flexDirection: 'row', alignItems: 'center', gap: 12, ...theme.shadows.card,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: theme.spacing.md,
+    gap: 12,
   },
   iconWrap: {
-    width: 48, height: 48, borderRadius: 12,
-    backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryBorder,
-    alignItems: 'center', justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  info: { flex: 1, gap: 4 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  vehicleNo: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  type: { fontSize: 13, color: colors.textSecondary },
-  driverRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  driverName: { fontSize: 13, color: colors.textMuted },
+  info: {
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  vehicleNo: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  type: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
 });

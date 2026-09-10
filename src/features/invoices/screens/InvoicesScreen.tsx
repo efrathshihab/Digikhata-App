@@ -32,8 +32,8 @@ export const InvoicesScreen = () => {
   const [activeFilter, setActiveFilter] = useState<FilterKey>('সব');
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['purchases', { search }],
-    queryFn: () => purchasesApi.getPurchases({ search: search || undefined, limit: 100 }),
+    queryKey: ['purchases'],
+    queryFn: () => purchasesApi.getPurchases({ limit: 100 }),
   });
 
   const purchases = data?.items || [];
@@ -65,12 +65,18 @@ export const InvoicesScreen = () => {
 
   const filtered = useMemo(() => {
     return invoiceItems.filter((inv) => {
+      const matchesSearch = !search.trim() ||
+        inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
+        inv.customerName.toLowerCase().includes(search.toLowerCase());
+
+      if (!matchesSearch) return false;
+
       if (activeFilter === 'পরিশোধিত') return inv.status === 'paid';
       if (activeFilter === 'আংশিক') return inv.status === 'partial';
       if (activeFilter === 'বকেয়া') return inv.status === 'unpaid';
       return true;
     });
-  }, [invoiceItems, activeFilter]);
+  }, [invoiceItems, activeFilter, search]);
 
   const totalDue = invoiceItems.reduce((s, inv) => s + inv.due, 0);
   const totalCollected = invoiceItems.reduce((s, inv) => s + inv.paid, 0);

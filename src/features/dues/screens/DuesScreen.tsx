@@ -135,7 +135,7 @@ export const DuesScreen = () => {
   const dueItems: DueItem[] = useMemo(() => {
     const items = data?.items || [];
     return items
-      .filter(c => Number(c.currentBalance) < 0)
+      .filter(c => Number(c.currentBalance) > 0)
       .map(c => {
         const diffDays = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / (1000 * 60 * 60 * 24)) || 1;
         return {

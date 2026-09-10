@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,41 +18,23 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 import { FilterBar } from '@/components/ui/FilterChip';
+import { useQuery } from '@tanstack/react-query';
+import { deliveriesApi, DeliveryItem } from '@/api/deliveries.api';
 
-// ── Types & Data ──────────────────────────────────────────────────────────────
-interface Delivery {
-  id: string;
-  deliveryNo: string;
-  customerName: string;
-  destination: string;
-  driverName: string;
-  vehicle: string;
-  date: string;
-  items: string;
-  status: 'pending' | 'in_progress' | 'delivered' | 'cancelled';
-}
-
-const ALL_DELIVERIES: Delivery[] = [
-  { id: '1', deliveryNo: 'DLV-০০২৩', customerName: 'রহিম উদ্দিন', destination: 'মিরপুর-১২, ঢাকা', driverName: 'আলী হোসেন', vehicle: 'ঢাকা-মেট্রো-১২৩৪', date: '২৭ আগ ২০২৬', items: 'সিমেন্ট ৫০ ব্যাগ', status: 'delivered' },
-  { id: '2', deliveryNo: 'DLV-০০২২', customerName: 'করিম মিয়া', destination: 'মতিঝিল, ঢাকা', driverName: 'করিম ড্রাইভার', vehicle: 'ঢাকা-মেট্রো-৫৬৭৮', date: '২৭ আগ ২০২৬', items: 'রড ১ টন', status: 'in_progress' },
-  { id: '3', deliveryNo: 'DLV-০০২১', customerName: 'মোঃ সালাউদ্দিন', destination: 'নারায়ণগঞ্জ', driverName: 'রহিম ড্রাইভার', vehicle: 'নারা-১১১১', date: '২৬ আগ ২০২৬', items: 'ব্লক ৫০০ পিস', status: 'pending' },
-  { id: '4', deliveryNo: 'DLV-০০২০', customerName: 'সুমাইয়া বেগম', destination: 'গাজীপুর', driverName: 'আলী হোসেন', vehicle: 'ঢাকা-মেট্রো-১২৩৪', date: '২৫ আগ ২০২৬', items: 'সিমেন্ট ১০০ ব্যাগ', status: 'delivered' },
-  { id: '5', deliveryNo: 'DLV-০০১৯', customerName: 'শাহিদুল ইসলাম', destination: 'কেরানীগঞ্জ', driverName: 'করিম ড্রাইভার', vehicle: 'ঢাকা-মেট্রো-৫৬৭৮', date: '২৪ আগ ২০২৬', items: 'বিভিন্ন', status: 'cancelled' },
-];
-
-const statusCfg = {
-  pending: { label: 'অপেক্ষমাণ', variant: 'warning' as const },
-  in_progress: { label: 'চলমান', variant: 'info' as const },
-  delivered: { label: 'সম্পন্ন', variant: 'success' as const },
-  cancelled: { label: 'বাতিল', variant: 'danger' as const },
+const statusCfg: Record<string, { label: string; variant: 'warning' | 'info' | 'success' | 'danger' }> = {
+  PENDING: { label: 'অপেক্ষমাণ', variant: 'warning' },
+  ASSIGNED: { label: 'বরাদ্দকৃত', variant: 'info' },
+  IN_TRANSIT: { label: 'চলমান', variant: 'info' },
+  DELIVERED: { label: 'সম্পন্ন', variant: 'success' },
+  CANCELLED: { label: 'বাতিল', variant: 'danger' },
 };
 
 const FILTERS = ['সব', 'চলমান', 'অপেক্ষমাণ', 'সম্পন্ন', 'বাতিল'] as const;
 type FilterKey = typeof FILTERS[number];
 
 // ── Delivery Card ─────────────────────────────────────────────────────────────
-const DeliveryCard = ({ item, onPress }: { item: Delivery; onPress: () => void }) => {
-  const cfg = statusCfg[item.status];
+const DeliveryCard = ({ item, onPress }: { item: DeliveryItem; onPress: () => void }) => {
+  const cfg = statusCfg[item.status] || { label: item.status, variant: 'info' };
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.card}>
       <View style={styles.cardTop}>
@@ -61,52 +43,66 @@ const DeliveryCard = ({ item, onPress }: { item: Delivery; onPress: () => void }
         </View>
         <View style={styles.cardInfo}>
           <View style={styles.cardTopRow}>
-            <Text style={styles.deliveryNo}>{item.deliveryNo}</Text>
+            <Text style={styles.deliveryNo}>{item.deliveryNumber}</Text>
             <StatusBadge label={cfg.label} variant={cfg.variant} />
           </View>
-          <Text style={styles.customerName}>{item.customerName}</Text>
+          <Text style={styles.customerName}>{item.customer?.name || 'গ্রাহক'}</Text>
           <View style={styles.metaRow}>
             <Feather name="map-pin" size={11} color={colors.textMuted} />
-            <Text style={styles.meta}>{item.destination}</Text>
+            <Text style={styles.meta}>{item.addressSnapshot}</Text>
           </View>
         </View>
       </View>
 
+      <View style={styles.cardDivider} />
+
       <View style={styles.cardBottom}>
-        <View style={styles.bottomItem}>
-          <Feather name="user" size={12} color={colors.textMuted} />
-          <Text style={styles.bottomText}>{item.driverName}</Text>
+        <View style={styles.driverInfo}>
+          <Feather name="user" size={12} color={colors.textSecondary} />
+          <Text style={styles.driverText}>{item.driver?.name || 'ড্রাইভার নির্ধারিত নয়'}</Text>
         </View>
-        <View style={styles.bottomItem}>
-          <Feather name="box" size={12} color={colors.textMuted} />
-          <Text style={styles.bottomText} numberOfLines={1}>{item.items}</Text>
-        </View>
-        <View style={styles.bottomItem}>
+        <View style={styles.dateInfo}>
           <Feather name="calendar" size={12} color={colors.textMuted} />
-          <Text style={styles.bottomText}>{item.date}</Text>
+          <Text style={styles.dateText}>{new Date(item.createdAt).toLocaleDateString('bn-BD')}</Text>
         </View>
-        <Feather name="chevron-right" size={15} color={colors.textMuted} />
       </View>
     </TouchableOpacity>
   );
 };
 
-// ── Screen ────────────────────────────────────────────────────────────────────
 export const DeliveriesScreen = () => {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('সব');
-  const [refreshing, setRefreshing] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('সব');
 
-  const filtered = ALL_DELIVERIES.filter((d) => {
-    const matchSearch = !search.trim() ||
-      d.deliveryNo.includes(search) ||
-      d.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      d.destination.includes(search);
-    const matchFilter = filter === 'সব' ||
-      statusCfg[d.status].label === filter;
-    return matchSearch && matchFilter;
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['deliveries'],
+    queryFn: () => deliveriesApi.getDeliveries({ limit: 100 }),
   });
+
+  const deliveries = data?.items || [];
+
+  const filtered = useMemo(() => {
+    return deliveries.filter((d) => {
+      const matchesSearch = !search.trim() ||
+        d.deliveryNumber.toLowerCase().includes(search.toLowerCase()) ||
+        (d.customer?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        d.addressSnapshot.toLowerCase().includes(search.toLowerCase());
+
+      if (!matchesSearch) return false;
+
+      if (activeFilter === 'চলমান') return d.status === 'IN_TRANSIT' || d.status === 'ASSIGNED';
+      if (activeFilter === 'অপেক্ষমাণ') return d.status === 'PENDING';
+      if (activeFilter === 'সম্পন্ন') return d.status === 'DELIVERED';
+      if (activeFilter === 'বাতিল') return d.status === 'CANCELLED';
+
+      return true;
+    });
+  }, [deliveries, search, activeFilter]);
+
+  const totalCount = deliveries.length;
+  const inProgressCount = deliveries.filter((d) => d.status === 'IN_TRANSIT' || d.status === 'ASSIGNED').length;
+  const deliveredCount = deliveries.filter((d) => d.status === 'DELIVERED').length;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -118,45 +114,42 @@ export const DeliveriesScreen = () => {
           <Feather name="arrow-left" size={20} color={colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>ডেলিভারি</Text>
-          <Text style={styles.headerSub}>{ALL_DELIVERIES.length} টি রেকর্ড</Text>
+          <Text style={styles.headerTitle}>ডেলিভারি ট্র্যাকিং</Text>
+          <Text style={styles.headerSub}>মোট {totalCount} টি ডেলিভারি</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} activeOpacity={0.7}>
-          <Feather name="plus" size={20} color={colors.primary} />
-        </TouchableOpacity>
+        <View style={{ width: 36 }} />
       </View>
 
       {/* Summary strip */}
       <View style={styles.summaryStrip}>
         <View style={styles.sumItem}>
-          <Text style={[styles.sumValue, { color: colors.warning }]}>
-            {ALL_DELIVERIES.filter((d) => d.status === 'pending').length}
-          </Text>
-          <Text style={styles.sumLabel}>অপেক্ষমাণ</Text>
+          <Text style={styles.sumValue}>{totalCount}</Text>
+          <Text style={styles.sumLabel}>মোট ডেলিভারি</Text>
         </View>
         <View style={styles.sumDivider} />
         <View style={styles.sumItem}>
-          <Text style={[styles.sumValue, { color: colors.info }]}>
-            {ALL_DELIVERIES.filter((d) => d.status === 'in_progress').length}
-          </Text>
+          <Text style={[styles.sumValue, { color: colors.info }]}>{inProgressCount}</Text>
           <Text style={styles.sumLabel}>চলমান</Text>
         </View>
         <View style={styles.sumDivider} />
         <View style={styles.sumItem}>
-          <Text style={[styles.sumValue, { color: colors.success }]}>
-            {ALL_DELIVERIES.filter((d) => d.status === 'delivered').length}
-          </Text>
+          <Text style={[styles.sumValue, { color: colors.success }]}>{deliveredCount}</Text>
           <Text style={styles.sumLabel}>সম্পন্ন</Text>
         </View>
       </View>
 
       {/* Search */}
       <View style={styles.searchWrap}>
-        <SearchInput value={search} onChangeText={setSearch} placeholder="ডেলিভারি নম্বর বা গ্রাহকের নাম" />
+        <SearchInput value={search} onChangeText={setSearch} placeholder="ডেলিভারি নম্বর বা গ্রাহক দিয়ে খুঁজুন" />
       </View>
 
-      {/* Filters */}
-      <FilterBar options={[...FILTERS]} active={filter} onSelect={setFilter} />
+      {/* Filter */}
+      <FilterBar
+        options={[...FILTERS]}
+        active={activeFilter}
+        onSelect={setActiveFilter}
+        variant="primary"
+      />
 
       {/* List */}
       <FlatList
@@ -166,78 +159,179 @@ export const DeliveriesScreen = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 800); }}
+            refreshing={isRefetching}
+            onRefresh={refetch}
             colors={[colors.primary]}
           />
         }
-        renderItem={({ item }) => (
-          <DeliveryCard item={item} onPress={() => router.push(`/transport/deliveries/${item.id}`)} />
-        )}
         ListEmptyComponent={
-          <EmptyState icon="truck" title="কোনো ডেলিভারি পাওয়া যায়নি" />
+          !isLoading ? (
+            <EmptyState
+              icon="truck"
+              title="কোনো ডেলিভারি পাওয়া যায়নি"
+              description="কোনো ডেলিভারি তথ্য পাওয়া যায়নি বা অনুসন্ধানে মেলেনি।"
+            />
+          ) : null
         }
+        renderItem={({ item }) => (
+          <DeliveryCard item={item} onPress={() => router.push(`/transport/deliveries/${item.id}` as any)} />
+        )}
       />
 
-      <FloatingActionButton onPress={() => router.push('/transport/deliveries/new')} label="নতুন ডেলিভারি" />
+      <FloatingActionButton
+        onPress={() => router.push('/transport/deliveries/new' as any)}
+        label="নতুন ডেলিভারি"
+      />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: theme.spacing.md, paddingVertical: 12,
-    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: colors.background,
-    alignItems: 'center', justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
-  headerSub: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
-  addBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryBorder,
-    alignItems: 'center', justifyContent: 'center',
+  headerCenter: {
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  headerSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   summaryStrip: {
-    flexDirection: 'row', backgroundColor: colors.surface,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    paddingVertical: 14,
+    paddingHorizontal: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  sumItem: { flex: 1, alignItems: 'center' },
-  sumValue: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
-  sumLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
-  sumDivider: { width: 1, backgroundColor: colors.border, marginVertical: 4 },
+  sumItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  sumValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  sumLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  sumDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: colors.border,
+  },
   searchWrap: {
-    paddingHorizontal: theme.spacing.md, paddingVertical: 10,
-    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
   },
-  listContent: { padding: theme.spacing.md, gap: 10, paddingBottom: 24 },
-
+  listContent: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: 90,
+    gap: 12,
+  },
   card: {
-    backgroundColor: colors.surface, borderRadius: theme.radius.card,
-    borderWidth: 1, borderColor: colors.border, ...theme.shadows.card,
+    backgroundColor: colors.surface,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: theme.spacing.md,
   },
-  cardTop: { flexDirection: 'row', padding: 13, gap: 12 },
+  cardTop: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   iconWrap: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primaryBorder,
-    alignItems: 'center', justifyContent: 'center',
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  cardInfo: { flex: 1, gap: 3 },
-  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  deliveryNo: { fontSize: 13, fontWeight: '700', color: colors.primary },
-  customerName: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  meta: { fontSize: 12, color: colors.textSecondary },
+  cardInfo: {
+    flex: 1,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  deliveryNo: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  customerName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  meta: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 10,
+  },
   cardBottom: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 10, paddingHorizontal: 13,
-    backgroundColor: colors.background, borderTopWidth: 1, borderTopColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  bottomItem: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
-  bottomText: { fontSize: 11, color: colors.textSecondary, flex: 1 },
+  driverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  driverText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  dateInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dateText: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
 });

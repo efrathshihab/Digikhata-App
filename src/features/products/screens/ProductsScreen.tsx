@@ -16,34 +16,9 @@ import { theme } from '@/constants/theme';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-import { FilterBar } from '@/components/ui/FilterChip';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  unit: string;
-  price: number;
-  stock: number;
-  status: 'active' | 'low' | 'out';
-}
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-const ALL_PRODUCTS: Product[] = [
-  { id: '1', name: 'ফ্লাই অ্যাশ সিমেন্ট', category: 'সিমেন্ট', unit: 'ব্যাগ', price: 480, stock: 250, status: 'active' },
-  { id: '2', name: 'পোর্টল্যান্ড সিমেন্ট', category: 'সিমেন্ট', unit: 'ব্যাগ', price: 520, stock: 120, status: 'active' },
-  { id: '3', name: 'রড — ১২mm', category: 'রড', unit: 'টন', price: 82000, stock: 15, status: 'low' },
-  { id: '4', name: 'রড — ১৬mm', category: 'রড', unit: 'টন', price: 86000, stock: 8, status: 'low' },
-  { id: '5', name: 'সিমেন্ট ব্লক', category: 'ব্লক', unit: 'পিস', price: 22, stock: 1500, status: 'active' },
-  { id: '6', name: 'হলো ব্লক', category: 'ব্লক', unit: 'পিস', price: 28, stock: 800, status: 'active' },
-  { id: '7', name: 'ইট (প্রথম শ্রেণী)', category: 'ইট', unit: 'হাজার', price: 9500, stock: 0, status: 'out' },
-  { id: '8', name: 'বালি (মোটা)', category: 'বালি', unit: 'ঘনফুট', price: 35, stock: 500, status: 'active' },
-  { id: '9', name: 'খোয়া — ৩/৪"', category: 'খোয়া', unit: 'ঘনফুট', price: 55, stock: 300, status: 'active' },
-];
-
-const CATEGORIES = ['সব', 'সিমেন্ট', 'রড', 'ব্লক', 'ইট', 'বালি', 'খোয়া'] as const;
-type CategoryKey = typeof CATEGORIES[number];
+import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
+import { useQuery } from '@tanstack/react-query';
+import { productsApi, Product as ApiProduct } from '@/api/products.api';
 
 const statusConfig = {
   active: { label: 'মজুদ আছে', variant: 'success' as const },
@@ -52,10 +27,17 @@ const statusConfig = {
 };
 
 // ── Product Card ──────────────────────────────────────────────────────────────
-const ProductCard = ({ product, onPress }: { product: Product; onPress: () => void }) => {
-  const cfg = statusConfig[product.status];
-  const isLow = product.status === 'low';
-  const isOut = product.status === 'out';
+const ProductCard = ({ product, onPress }: { product: ApiProduct; onPress: () => void }) => {
+  const stock = Number(product.stockQuantity || 0);
+  const alertLimit = Number(product.minStockAlert || 10);
+  
+  let statusKey: 'active' | 'low' | 'out' = 'active';
+  if (stock <= 0) statusKey = 'out';
+  else if (stock <= alertLimit) statusKey = 'low';
+
+  const cfg = statusConfig[statusKey];
+  const isLow = statusKey === 'low';
+  const isOut = statusKey === 'out';
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.card}>
@@ -69,14 +51,14 @@ const ProductCard = ({ product, onPress }: { product: Product; onPress: () => vo
           </View>
           <View style={styles.cardInfo}>
             <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
-            <Text style={styles.category}>{product.category} · {product.unit}</Text>
+            <Text style={styles.category}>{product.productCode} · {product.unit}</Text>
           </View>
           <StatusBadge label={cfg.label} variant={cfg.variant} />
         </View>
         <View style={styles.cardBottom}>
           <View>
             <Text style={styles.priceLabel}>মূল্য</Text>
-            <Text style={styles.price}>৳ {product.price.toLocaleString()} / {product.unit}</Text>
+            <Text style={styles.price}>৳ {Number(product.price).toLocaleString()} / {product.unit}</Text>
           </View>
           <View style={styles.stockWrap}>
             <Text style={styles.stockLabel}>মজুদ</Text>
@@ -85,10 +67,9 @@ const ProductCard = ({ product, onPress }: { product: Product; onPress: () => vo
               isOut && { color: colors.danger },
               isLow && { color: colors.warning },
             ]}>
-              {product.stock} {product.unit}
+              {stock} {product.unit}
             </Text>
           </View>
-          <Feather name="chevron-right" size={16} color={colors.textMuted} />
         </View>
       </View>
     </TouchableOpacity>
@@ -99,22 +80,26 @@ const ProductCard = ({ product, onPress }: { product: Product; onPress: () => vo
 export const ProductsScreen = () => {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState<CategoryKey>('সব');
-  const [refreshing, setRefreshing] = useState(false);
+
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['products', { search }],
+    queryFn: () => productsApi.getProducts({ search: search || undefined, limit: 100 }),
+  });
+
+  const productsList = data?.items || [];
 
   const filtered = useMemo(() => {
-    return ALL_PRODUCTS.filter((p) => {
+    return productsList.filter((p) => {
       const matchSearch = !search.trim() ||
         p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.category.includes(search);
-      const matchCat = activeCategory === 'সব' || p.category === activeCategory;
-      return matchSearch && matchCat;
+        p.productCode.toLowerCase().includes(search.toLowerCase());
+      return matchSearch;
     });
-  }, [search, activeCategory]);
+  }, [productsList, search]);
 
-  const totalProducts = ALL_PRODUCTS.length;
-  const outOfStock = ALL_PRODUCTS.filter((p) => p.status === 'out').length;
-  const lowStock = ALL_PRODUCTS.filter((p) => p.status === 'low').length;
+  const totalProducts = productsList.length;
+  const outOfStock = productsList.filter((p) => Number(p.stockQuantity) <= 0).length;
+  const lowStock = productsList.filter((p) => Number(p.stockQuantity) > 0 && Number(p.stockQuantity) <= Number(p.minStockAlert || 10)).length;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -129,7 +114,7 @@ export const ProductsScreen = () => {
           <Text style={styles.headerTitle}>পণ্য তালিকা</Text>
           <Text style={styles.headerSub}>{totalProducts} টি পণ্য</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.addBtn} activeOpacity={0.7} onPress={() => router.push('/products/add' as any)}>
           <Feather name="plus" size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
@@ -154,16 +139,8 @@ export const ProductsScreen = () => {
 
       {/* Search */}
       <View style={styles.searchWrap}>
-        <SearchInput value={search} onChangeText={setSearch} placeholder="পণ্যের নাম বা ক্যাটাগরি" />
+        <SearchInput value={search} onChangeText={setSearch} placeholder="পণ্যের নাম বা কোড দিয়ে খুঁজুন" />
       </View>
-
-      {/* Category filter */}
-      <FilterBar
-        options={[...CATEGORIES]}
-        active={activeCategory}
-        onSelect={setActiveCategory}
-        variant="primary"
-      />
 
       {/* List */}
       <FlatList
@@ -173,95 +150,182 @@ export const ProductsScreen = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 800); }}
+            refreshing={isRefetching}
+            onRefresh={refetch}
             colors={[colors.primary]}
           />
+        }
+        ListEmptyComponent={
+          !isLoading ? (
+            <EmptyState
+              icon="package"
+              title="কোনো পণ্য পাওয়া যায়নি"
+              description="পণ্য তালিকা খালি অথবা অনুসন্ধানে কোনো পণ্য মেলেনি।"
+            />
+          ) : null
         }
         renderItem={({ item }) => (
           <ProductCard product={item} onPress={() => {}} />
         )}
-        ListEmptyComponent={
-          <EmptyState
-            icon="package"
-            title="কোনো পণ্য পাওয়া যায়নি"
-            description="অনুসন্ধান পরিবর্তন করুন বা নতুন পণ্য যোগ করুন।"
-          />
-        }
+      />
+
+      <FloatingActionButton
+        onPress={() => router.push('/products/add' as any)}
+        label="নতুন পণ্য"
       />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.lg,
     paddingVertical: 12,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: colors.background,
-    alignItems: 'center', justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
-  headerSub: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
+  headerCenter: {
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  headerSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
   addBtn: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.primarySoft,
-    borderWidth: 1, borderColor: colors.primaryBorder,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryStrip: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: theme.spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  sumItem: { flex: 1, alignItems: 'center' },
-  sumValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, letterSpacing: -0.3 },
-  sumLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
-  sumDivider: { width: 1, backgroundColor: colors.border, marginVertical: 4 },
+  sumItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  sumValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  sumLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  sumDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: colors.border,
+  },
   searchWrap: {
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 10,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
   },
-  listContent: { padding: theme.spacing.md, gap: 10, paddingBottom: 32 },
+  listContent: {
+    paddingHorizontal: theme.spacing.lg,
+    paddingBottom: 90,
+    gap: 12,
+  },
   card: {
+    flexDirection: 'row',
     backgroundColor: colors.surface,
     borderRadius: theme.radius.card,
     borderWidth: 1,
     borderColor: colors.border,
-    flexDirection: 'row',
     overflow: 'hidden',
-    ...theme.shadows.card,
   },
-  cardAccent: { width: 4 },
-  cardBody: { flex: 1, padding: 13, gap: 10 },
-  cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  cardAccent: {
+    width: 4,
+  },
+  cardBody: {
+    flex: 1,
+    padding: theme.spacing.md,
+    gap: 10,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   productIcon: {
-    width: 40, height: 40, borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.primarySoft,
-    borderWidth: 1, borderColor: colors.primaryBorder,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  cardInfo: { flex: 1 },
-  productName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, lineHeight: 19 },
-  category: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  priceLabel: { fontSize: 10, color: colors.textMuted, marginBottom: 2 },
-  price: { fontSize: 13, fontWeight: '700', color: colors.primary },
-  stockWrap: { alignItems: 'flex-end' },
-  stockLabel: { fontSize: 10, color: colors.textMuted, marginBottom: 2 },
-  stockValue: { fontSize: 13, fontWeight: '700', color: colors.success },
+  cardInfo: {
+    flex: 1,
+  },
+  productName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    lineHeight: 20,
+  },
+  category: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  cardBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  priceLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  price: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  stockWrap: {
+    alignItems: 'flex-end',
+  },
+  stockLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  stockValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.success,
+  },
 });

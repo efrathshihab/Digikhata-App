@@ -17,6 +17,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { AppButton } from '@/components/ui/AppButton';
 import { useQuery } from '@tanstack/react-query';
 import { purchasesApi } from '@/api/purchases.api';
+import { pdfService } from '@/services/pdfService';
 
 // ── Mock invoice data ─────────────────────────────────────────────────────────
 // Replaced by real API data
@@ -67,7 +68,9 @@ export const InvoiceDetailScreen = () => {
   };
 
   const handleShare = () => {
-    Alert.alert('শেয়ার', 'ইনভয়েস PDF শেয়ার করার সুবিধা শীঘ্রই আসছে।');
+    if (invoice?.id) {
+      pdfService.openInvoicePdf(invoice.id);
+    }
   };
 
   if (isLoading || !purchase) {

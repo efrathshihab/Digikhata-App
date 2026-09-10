@@ -83,14 +83,12 @@ export interface PurchaseListItem {
 
 export interface PurchaseListResponse {
   success: boolean;
-  data: {
-    items: PurchaseListItem[];
-    meta: {
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    };
+  data: PurchaseListItem[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
   };
 }
 
@@ -110,8 +108,10 @@ export const purchasesApi = {
     return response.data.data;
   },
 
-  getPurchases: async (params?: { page?: number; limit?: number; search?: string; customerId?: string; status?: string }): Promise<PurchaseListResponse['data']> => {
+  getPurchases: async (params?: { page?: number; limit?: number; customerId?: string; status?: 'DRAFT' | 'CONFIRMED' | 'VOIDED'; from?: string; to?: string }): Promise<{ items: PurchaseListItem[]; meta: PurchaseListResponse['meta'] }> => {
     const response = await apiClient.get<PurchaseListResponse>('/purchases', { params });
-    return response.data.data;
+    const items = Array.isArray(response.data.data) ? response.data.data : ((response.data.data as any)?.items || []);
+    const meta = response.data.meta || (response.data.data as any)?.meta || { total: items.length, page: 1, limit: 20, pages: 1 };
+    return { items, meta };
   }
 };
