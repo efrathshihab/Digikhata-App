@@ -77,7 +77,7 @@ export const CustomerDetailsScreen = () => {
     );
   }
 
-  const isOverdue = Number(customer.currentBalance) < 0;
+  const isOverdue = Number(customer.currentBalance) > 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -189,12 +189,12 @@ export const CustomerDetailsScreen = () => {
           {ledger?.items?.map((tx, i) => (
             <React.Fragment key={tx.id}>
               <TransactionRow tx={{
-                date: new Date(tx.date).toLocaleDateString('bn-BD'),
-                ref: tx.referenceId || '',
+                date: (tx.date || tx.entryDate) ? new Date((tx.date || tx.entryDate) as string).toLocaleDateString('bn-BD') : '—',
+                ref: tx.referenceId || tx.sourceId || '',
                 desc: tx.description,
                 debit: Number(tx.debit),
                 payment: Number(tx.credit),
-                balance: Number(tx.balance),
+                balance: Number(tx.balance ?? tx.balanceAfter ?? 0),
               }} />
               {i < ledger.items.length - 1 && <View style={tStyles.divider} />}
             </React.Fragment>

@@ -40,8 +40,8 @@ export const InvoicesScreen = () => {
 
   const invoiceItems: Invoice[] = useMemo(() => {
     return purchases.map((p) => {
-      const total = Number(p.invoice?.totalAmount || p.netAmount || 0);
-      const due = Number(p.invoice?.dueAmount || 0);
+      const total = Number(p.invoice?.totalAmount || p.invoice?.grandTotal || p.netAmount || 0);
+      const due = Number(p.invoice?.dueAmount || p.invoice?.currentDue || 0);
       const paid = Math.max(0, total - due);
       let status: 'paid' | 'partial' | 'unpaid' = 'unpaid';
       if (due <= 0) {

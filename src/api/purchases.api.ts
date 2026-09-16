@@ -66,8 +66,10 @@ export interface PurchaseListItem {
   invoice?: {
     id: string;
     invoiceNumber: string;
-    totalAmount: string;
-    dueAmount: string;
+    grandTotal?: string;
+    currentDue?: string;
+    totalAmount?: string;
+    dueAmount?: string;
   };
   items?: Array<{
     id: string;
@@ -112,6 +114,14 @@ export const purchasesApi = {
     const response = await apiClient.get<PurchaseListResponse>('/purchases', { params });
     const items = Array.isArray(response.data.data) ? response.data.data : ((response.data.data as any)?.items || []);
     const meta = response.data.meta || (response.data.data as any)?.meta || { total: items.length, page: 1, limit: 20, pages: 1 };
-    return { items, meta };
+    const mappedItems = items.map((item: any) => ({
+      ...item,
+      invoice: item.invoice ? {
+        ...item.invoice,
+        totalAmount: item.invoice.totalAmount || item.invoice.grandTotal || "0",
+        dueAmount: item.invoice.dueAmount || item.invoice.currentDue || "0",
+      } : undefined,
+    }));
+    return { items: mappedItems, meta };
   }
 };

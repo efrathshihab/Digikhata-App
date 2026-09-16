@@ -79,6 +79,8 @@ export const ReceivePaymentScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['customerLedger', selectedCustomerId] });
       queryClient.invalidateQueries({ queryKey: ['customer', selectedCustomerId] });
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
       
       Alert.alert(
         'সফল',
@@ -96,13 +98,13 @@ export const ReceivePaymentScreen = () => {
   React.useEffect(() => {
     if (selectedCustomer && !amount) {
       const balance = Number(selectedCustomer.currentBalance);
-      if (balance < 0) {
-        setAmount(Math.abs(balance).toString());
+      if (balance > 0) {
+        setAmount(balance.toString());
       }
     }
   }, [selectedCustomer]);
 
-  const maxDue = selectedCustomer ? (Number(selectedCustomer.currentBalance) < 0 ? Math.abs(Number(selectedCustomer.currentBalance)) : 0) : 0;
+  const maxDue = selectedCustomer ? (Number(selectedCustomer.currentBalance) > 0 ? Number(selectedCustomer.currentBalance) : 0) : 0;
   const parsedAmount = parseFloat(amount) || 0;
   const isOverpayment = parsedAmount > maxDue && maxDue > 0;
 
@@ -205,13 +207,14 @@ export const ReceivePaymentScreen = () => {
               />
               <View style={styles.selectorList}>
                 {customersData?.items
+                  ?.filter((c) => Number(c.currentBalance) > 0)
                   ?.filter((c) => 
                     !customerSearch.trim() ||
                     c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
                     c.phone.includes(customerSearch)
                   )
                   .map((c) => {
-                    const cDue = Number(c.currentBalance) < 0 ? Math.abs(Number(c.currentBalance)) : 0;
+                    const cDue = Number(c.currentBalance) > 0 ? Number(c.currentBalance) : 0;
                     return (
                     <TouchableOpacity
                       key={c.id}

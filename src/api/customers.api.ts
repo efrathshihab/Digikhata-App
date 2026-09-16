@@ -35,12 +35,15 @@ export interface CustomerResponse {
 
 export interface CustomerLedgerItem {
   id: string;
-  type: 'PURCHASE' | 'PAYMENT' | 'OPENING_BALANCE' | 'REFUND';
-  referenceId: string;
-  date: string;
+  type: 'PURCHASE' | 'PAYMENT' | 'OPENING_BALANCE' | 'REFUND' | 'REVERSAL';
+  referenceId?: string;
+  sourceId?: string;
+  date?: string;
+  entryDate?: string;
   debit: string;
   credit: string;
-  balance: string;
+  balance?: string;
+  balanceAfter?: string;
   description: string;
 }
 
@@ -98,7 +101,13 @@ export const customersApi = {
 
   getCustomerLedger: async (id: string, params?: { page?: number; limit?: number }): Promise<{ items: CustomerLedgerItem[]; meta: any }> => {
     const response = await apiClient.get<CustomerLedgerResponse>(`/customers/${id}/ledger`, { params });
-    const items = Array.isArray(response.data.data) ? response.data.data : ((response.data.data as any)?.items || []);
+    const rawItems = Array.isArray(response.data.data) ? response.data.data : ((response.data.data as any)?.items || []);
+    const items = rawItems.map((item: any) => ({
+      ...item,
+      date: item.date || item.entryDate || item.createdAt,
+      referenceId: item.referenceId || item.sourceId || "",
+      balance: item.balance ?? item.balanceAfter ?? "0",
+    }));
     const meta = response.data.meta || (response.data.data as any)?.meta || {};
     return { items, meta };
   },
